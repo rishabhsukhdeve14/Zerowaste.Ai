@@ -27,14 +27,11 @@ PROJECT_ID = "stalwart-fx-490910-e3"
 def init_earth_engine():
     try:
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
-            secret_data = st.secrets["GCP_SERVICE_ACCOUNT"]
-            if isinstance(secret_data, str):
-                key_dict = json.loads(secret_data)
-            else:
-                key_dict = dict(secret_data)
+            # Streamlit secrets dict load
+            key_dict = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
             
-            # Format private_key correctly if escaping issue exists
-            if "private_key" in key_dict and isinstance(key_dict["private_key"], str):
+            # Clean up double escaped newlines if any remain
+            if "private_key" in key_dict:
                 key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
 
             credentials = ee.ServiceAccountCredentials(
@@ -47,7 +44,9 @@ def init_earth_engine():
             ee.Initialize(project=PROJECT_ID)
             return True, f"GEE Connected (Project: {PROJECT_ID})"
     except Exception as e:
-        return False, f"GEE Auth Error: {str(e)}"
+        # Secure error string (credentials screen par expose na ho)
+        error_msg = str(e).split("http")[0] if "http" in str(e) else str(e)
+        return False, f"GEE Auth Error: {error_msg}"
 
 gee_connected, gee_msg = init_earth_engine()
 
