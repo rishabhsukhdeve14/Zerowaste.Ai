@@ -3,3 +3,5 @@ folium
 requests
 pandas
 numpy
+earthengine-api
+streamlit-folium
