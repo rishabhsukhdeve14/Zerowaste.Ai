@@ -3,5 +3,7 @@ folium
 requests
 pandas
 numpy
+scipy
+torch
 earthengine-api
 streamlit-folium
