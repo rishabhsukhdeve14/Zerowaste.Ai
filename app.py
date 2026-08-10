@@ -1,3 +1,35 @@
+import os
+import json
+import streamlit as st
+import ee
+
+PROJECT_ID = 'stalwart-fx-490910-e3'
+
+# -----------------------------------------------------------------------------
+# STREAMLIT CLOUD SAFE INITIALIZATION
+# -----------------------------------------------------------------------------
+def init_earth_engine():
+    try:
+        # Check if secrets are passed in Streamlit Cloud
+        if "EARTHENGINE_TOKEN" in st.secrets:
+            # Service Account or Token from Streamlit Secrets
+            secret_token = st.secrets["EARTHENGINE_TOKEN"]
+            token_dict = json.loads(secret_token)
+            credentials = ee.ServiceAccountCredentials(
+                token_dict["client_email"], 
+                key_data=secret_token
+            )
+            ee.Initialize(credentials, project=PROJECT_ID)
+            st.sidebar.success("🟢 Connected to Earth Engine API")
+        else:
+            # Fallback initialization using GCP Project ID
+            ee.Initialize(project=PROJECT_ID)
+            st.sidebar.success("🟢 Connected with Project ID")
+    except Exception as e:
+        st.sidebar.warning("⚠️ GEE Cloud Auth Warning: Running in Cached/Simulated Telemetry Mode")
+
+# Run Engine Init
+init_earth_engine()
 import ee
 
 # -----------------------------------------------------------------------------
