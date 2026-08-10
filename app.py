@@ -16,7 +16,7 @@ import streamlit_folium as st_folium
 # 1. PAGE CONFIGURATION & INITIALIZATION
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Zero Waste Solutions — Live Satellite & Sensor Physics Engine",
+    page_title="Zero Waste Solutions — Master Physics & Geotechnical Engine",
     page_icon="🛰️",
     layout="wide",
 )
@@ -27,17 +27,27 @@ PROJECT_ID = "stalwart-fx-490910-e3"
 def init_earth_engine():
     try:
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
-            key_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+            secret_data = st.secrets["GCP_SERVICE_ACCOUNT"]
+            if isinstance(secret_data, str):
+                key_dict = json.loads(secret_data)
+            else:
+                key_dict = dict(secret_data)
+            
+            # Format private_key correctly if escaping issue exists
+            if "private_key" in key_dict and isinstance(key_dict["private_key"], str):
+                key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+
             credentials = ee.ServiceAccountCredentials(
-                key_dict["client_email"], key_data=st.secrets["GCP_SERVICE_ACCOUNT"]
+                key_dict["client_email"],
+                key_data=json.dumps(key_dict)
             )
             ee.Initialize(credentials, project=PROJECT_ID)
-            return True, "GEE Live Connected (Service Account)"
+            return True, "GEE Connected (Service Account Active)"
         else:
             ee.Initialize(project=PROJECT_ID)
-            return True, f"GEE Live Connected (Project: {PROJECT_ID})"
+            return True, f"GEE Connected (Project: {PROJECT_ID})"
     except Exception as e:
-        return False, str(e)
+        return False, f"GEE Auth Error: {str(e)}"
 
 gee_connected, gee_msg = init_earth_engine()
 
@@ -56,10 +66,9 @@ INDIA_LANDFILLS = {
 }
 
 # -----------------------------------------------------------------------------
-# 3. LIVE ATMOSPHERIC & SATELLITE FETCHERS
+# 3. LIVE ATMOSPHERIC & SATELLITE DATA PIPELINES
 # -----------------------------------------------------------------------------
 def fetch_live_weather(lat, lon):
-    """Fetch real-time atmospheric readings via Open-Meteo API"""
     try:
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m"
         res = requests.get(url, timeout=5).json()
@@ -75,9 +84,8 @@ def fetch_live_weather(lat, lon):
         return {"temp_c": 34.2, "humidity": 55.0, "pressure_hpa": 1008.4, "wind_speed": 7.2, "timestamp": "Live API Stream"}
 
 def fetch_gee_sentinel5p_methane(lat, lon):
-    """Fetch real-time Sentinel-5P Methane Column Density from Google Earth Engine"""
     if not gee_connected:
-        return 1850.0 # Default ppb
+        return 1850.0
     try:
         point = ee.Geometry.Point([lon, lat])
         now = datetime.datetime.now()
@@ -97,14 +105,12 @@ def fetch_gee_sentinel5p_methane(lat, lon):
         return 1862.1
 
 # -----------------------------------------------------------------------------
-# 4. GEOTECHNICAL & THERMODYNAMIC ENGINE (DRIVEN BY LIVE METRICS)
+# 4. GEOTECHNICAL & THERMODYNAMIC ENGINE
 # -----------------------------------------------------------------------------
 class GeotechThermodynamics:
     @staticmethod
     def calculate_drilling_plan(lat, lon, height_m, waste_mass_mt, live_ch4_ppb, live_pressure_hpa):
         optimal_depth_m = round(height_m * 0.72, 1)
-        
-        # Pressure correction factor for Methane Volumetrics (Ideal Gas Law adaptation)
         pressure_ratio = live_pressure_hpa / 1013.25
         ch4_factor = live_ch4_ppb / 1800.0
         
@@ -119,7 +125,7 @@ class GeotechThermodynamics:
         return optimal_depth_m, gas_vol_m3, suction_rate, boreholes
 
 # -----------------------------------------------------------------------------
-# 5. HIGH-ORDER DATA DYNAMICS (SINDy, DMD, HAVOK, PINN)
+# 5. HIGH-ORDER PHYSICS & BRUNTON-KUTZ DATA DYNAMICS ENGINE
 # -----------------------------------------------------------------------------
 class BruntonKutzDataDynamics:
     @staticmethod
@@ -153,6 +159,19 @@ class BruntonKutzDataDynamics:
                     Xi[big_ind, ind] = pinv(Theta[:, big_ind]) @ Xdot[:, ind]
         return Xi
 
+    @staticmethod
+    def havok_koopman_embedding(x_series, q=10, r=4):
+        n = len(x_series) - q + 1
+        H = np.zeros((q, n))
+        for i in range(q):
+            H[i, :] = x_series[i:i+n]
+        U, S, Vh = svd(H, full_matrices=False)
+        V_sub = Vh.T[:, :r]
+        dV = np.diff(V_sub, axis=0)
+        V_left = V_sub[:-1, :]
+        A_havok = pinv(V_left) @ dV
+        return A_havok, V_sub
+
 class AdvectionDiffusionPINN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -175,15 +194,21 @@ class AdvectionDiffusionPINN(nn.Module):
         return u_t + velocity * u_x - diff_coeff * u_xx
 
 # -----------------------------------------------------------------------------
-# 6. SIDEBAR CONTROLS & LIVE DATA EXECUTION
+# 6. SIDEBAR CONTROLS & LIVE EXECUTION
 # -----------------------------------------------------------------------------
-st.sidebar.title("🎮 Live Site Selection")
+st.sidebar.title("🎮 Master Controls")
 
 selected_site_name = st.sidebar.selectbox("Target Indian Landfill", list(INDIA_LANDFILLS.keys()))
 site_info = INDIA_LANDFILLS[selected_site_name]
 
 lat, lon = site_info["lat"], site_info["lon"]
 height_m, waste_mass = site_info["height_m"], site_info["waste_mass_mt"]
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔬 Physics Engine Modules")
+enable_pinn = st.sidebar.checkbox("Run PINN AutoDiff Engine", value=True)
+enable_sindy = st.sidebar.checkbox("Run SINDy Identification", value=True)
+enable_havok = st.sidebar.checkbox("Run HAVOK Matrix", value=True)
 
 # Fetch Live Weather & Satellite Data
 with st.spinner("Fetching Live Sentinel-5P Satellite & Telemetry Feed..."):
@@ -194,24 +219,41 @@ depth_m, gas_vol_m3, suction_rate, boreholes = GeotechThermodynamics.calculate_d
     lat, lon, height_m, waste_mass, live_ch4, weather_data["pressure_hpa"]
 )
 
+# Physics Computations
+t_grid = np.linspace(0, 10, 100)
+x_spatial = np.linspace(-5, 5, 50)
+T_mat, X_mat = np.meshgrid(t_grid, x_spatial)
+plume_field = np.exp(-0.2 * (X_mat - 0.5 * T_mat)**2) + 0.02 * np.random.randn(*X_mat.shape)
+
+Phi, eigs = BruntonKutzDataDynamics.dynamic_mode_decomposition(plume_field[:, :-1], plume_field[:, 1:], r=3)
+x_state = np.column_stack([np.sin(t_grid), np.cos(t_grid)])
+x_dot = np.column_stack([np.cos(t_grid), -np.sin(t_grid)])
+sindy_weights = BruntonKutzDataDynamics.sindy_identification(x_state, x_dot)
+havok_A, _ = BruntonKutzDataDynamics.havok_koopman_embedding(plume_field[25, :], q=12, r=4)
+
+pinn_res = 0.0
+if enable_pinn:
+    pinn_net = AdvectionDiffusionPINN()
+    pinn_res = float(pinn_net.residual(torch.rand(20, 1), torch.rand(20, 1)).detach().numpy().mean())
+
 # -----------------------------------------------------------------------------
 # 7. REAL-TIME DASHBOARD RENDER
 # -----------------------------------------------------------------------------
-st.title("🛰️ Zero Waste Solutions — Live Satellite & Sensor Physics Engine")
-st.caption(f"Connected to Live Streams | Last Synced: {weather_data['timestamp']}")
+st.title("🛰️ Zero Waste Solutions — Master Physics & Multi-Site Platform")
+st.caption(f"Connected to Live Satellite/Telemetry Streams | Last Synced: {weather_data['timestamp']}")
 
-# Live Metrics Header
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Live Surface Temp", f"{weather_data['temp_c']} °C", f"Humidity: {weather_data['humidity']}%")
-c2.metric("Surface Pressure", f"{weather_data['pressure_hpa']} hPa", f"Wind: {weather_data['wind_speed']} km/h")
-c3.metric("Sentinel-5P CH₄ Feed", f"{live_ch4} ppb", "TROPOMI Orbit Stream")
-c4.metric("Live Drilling Depth Target", f"{depth_m} meters", f"Core Gas Vol: {gas_vol_m3/1e6:.2f}M-m³")
-c5.metric("Target Suction Rate", f"{suction_rate} m³/hr", selected_site_name)
+# Metrics Bar
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Live Surface Temp", f"{weather_data['temp_c']} °C", f"Wind: {weather_data['wind_speed']} km/h")
+m2.metric("Barometric Pressure", f"{weather_data['pressure_hpa']} hPa", f"Humidity: {weather_data['humidity']}%")
+m3.metric("Sentinel-5P CH₄", f"{live_ch4} ppb", "TROPOMI Orbit")
+m4.metric("Optimum Drill Depth", f"{depth_m} meters", f"Core Vol: {gas_vol_m3/1e6:.2f}M-m³")
+m5.metric("Target Suction Rate", f"{suction_rate} m³/hr", f"PINN Res: {pinn_res:.5f}")
 
 st.markdown("---")
 
-# All India Interactive Map with Active Boreholes
-st.subheader("📍 Live All-India Landfill Network & Active Boreholes")
+# All-India Interactive Map
+st.subheader("📍 All-India Landfill Network & Active Target Boreholes")
 m = folium.Map(location=[lat, lon], zoom_start=13, tiles="OpenStreetMap")
 
 for site, d in INDIA_LANDFILLS.items():
@@ -231,19 +273,20 @@ for hole in boreholes:
         icon=folium.Icon(color="green", icon="wrench")
     ).add_to(m)
 
+folium.Circle([lat, lon], radius=1000, color="red", fill=True, fill_opacity=0.15).add_to(m)
+
 st_folium.st_folium(m, width=1200, height=450)
 
 st.markdown("---")
 
-# Drilling Coordinates & Live Physics
+# Drilling Table, Telemetry & Brunton-Kutz Systems
 col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("🛠️ Drilling Schedule & Coordinates")
     st.dataframe(pd.DataFrame(boreholes), use_container_width=True)
-
-with col2:
-    st.subheader("⚡ Live Atmospheric & Satellite Telemetry")
+    
+    st.subheader("⚡ Secure Telemetry Stream")
     st.json({
         "Site Location": selected_site_name,
         "Latitude": lat,
@@ -252,5 +295,16 @@ with col2:
         "Ambient Surface Temp (°C)": weather_data["temp_c"],
         "Barometric Pressure (hPa)": weather_data["pressure_hpa"],
         "Wind Speed (km/h)": weather_data["wind_speed"],
-        "GEE Connection": gee_msg
+        "GEE Status": "CONNECTED ✅" if gee_connected else "AUTH ERROR ❌",
+        "GEE Details": gee_msg if not gee_connected else "Earth Engine Service Account Authenticated"
     })
+
+with col2:
+    st.subheader("⚙️ System Identification (Brunton & Kutz)")
+    if enable_sindy:
+        st.write("**SINDy Sparse Coefficients $\mathbf{\Xi}$:**")
+        st.dataframe(pd.DataFrame(sindy_weights, columns=["dx1/dt", "dx2/dt"]), height=110)
+    
+    if enable_havok:
+        st.write("**HAVOK Matrix $A_{HAVOK}$:**")
+        st.dataframe(pd.DataFrame(havok_A), height=110)
