@@ -1,3 +1,30 @@
+
+import json
+import ee
+import streamlit as st
+
+PROJECT_ID = 'stalwart-fx-490910-e3'
+
+
+def init_gee():
+  try:
+    if 'GCP_SERVICE_ACCOUNT' in st.secrets:
+      # Secrets se Service Account key parse karo
+      key_dict = json.loads(st.secrets['GCP_SERVICE_ACCOUNT'])
+      credentials = ee.ServiceAccountCredentials(
+          key_dict['client_email'], key_data=st.secrets['GCP_SERVICE_ACCOUNT']
+      )
+      ee.Initialize(credentials, project=PROJECT_ID)
+      st.sidebar.success('🟢 GEE Connected via Service Account')
+    else:
+      # Local environment fallback
+      ee.Initialize(project=PROJECT_ID)
+      st.sidebar.success('🟢 GEE Connected locally')
+  except Exception as e:
+    st.sidebar.error(f'⚠️ GEE Auth Error: {e}')
+
+
+init_gee()
 import os
 import json
 import streamlit as st
