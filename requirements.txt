@@ -1,9 +1,7 @@
 streamlit
-streamlit-folium
+earthengine-api
 folium
-plotly
-requests
-numpy
+streamlit-folium
+streamlit-autorefresh
 pandas
-scipy
-torch
+numpy
