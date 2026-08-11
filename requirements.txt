@@ -1,9 +1,9 @@
 streamlit
+streamlit-folium
 folium
+plotly
 requests
-pandas
 numpy
+pandas
 scipy
 torch
-earthengine-api
-streamlit-folium
