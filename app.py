@@ -12,23 +12,21 @@ from streamlit_folium import st_folium
 
 
 # ============================================================
-# ZERO WASTE.AI - FAST / LAZY-LOAD VERSION
+# ZERO WASTE.AI
+# Clean, lazy-loading Streamlit application
 # ============================================================
 
 PROJECT_ID = "stalwart-fx-490910-e3"
 
-S5P = "COPERNICUS/S5P/OFFL/L3_CH4"
+S5P_DATASET = "COPERNICUS/S5P/OFFL/L3_CH4"
 
-CH4 = "CH4_column_volume_mixing_ratio_dry_air_bias_corrected"
-CH4_UNCERTAINTY = "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+CH4_BAND = "CH4_column_volume_mixing_ratio_dry_air"
+UNCERTAINTY_BAND = (
+    "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+)
 
-SCALE = 1113.2
+TROPOMI_SCALE = 1113.2
 
-
-APP_VERSION = "2026.08.11-fixed-results-v2"
-if st.session_state.get("app_version") != APP_VERSION:
-    st.session_state["app_version"] = APP_VERSION
-    st.session_state.pop("methane_results", None)
 
 # ============================================================
 # PAGE
@@ -38,11 +36,10 @@ st.set_page_config(
     page_title="ZeroWaste.AI",
     page_icon="🌍",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 st.markdown(
-    """ <style> .stApp { background: radial-gradient(circle at 90% 0%, rgba(56,189,248,.12), transparent 30%), radial-gradient(circle at 5% 20%, rgba(34,197,94,.08), transparent 28%), #020617; color: #f8fafc; } .hero { font-size: 3rem; font-weight: 950; letter-spacing: -2px; line-height: 1; background: linear-gradient(90deg,#38bdf8,#22c55e,#f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent; } .sub { color: #94a3b8; font-size: 1.05rem; margin: 8px 0 20px; } .card { background: rgba(15,23,42,.88); border: 1px solid rgba(148,163,184,.16); border-radius: 14px; padding: 15px; margin: 10px 0; } </style> """,
+    """ <style> .stApp { background: #020617; color: #f8fafc; } .hero { font-size: 3rem; font-weight: 900; line-height: 1.05; background: linear-gradient( 90deg, #38bdf8, #22c55e, #f43f5e ); -webkit-background-clip: text; -webkit-text-fill-color: transparent; } .subtitle { color: #94a3b8; font-size: 1.05rem; margin: 10px 0 20px; } .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 16px; margin: 10px 0; } </style> """,
     unsafe_allow_html=True,
 )
 
@@ -52,7 +49,7 @@ st.markdown(
 # ============================================================
 
 @st.cache_resource
-def init_earth_engine():
+def connect_earth_engine():
     try:
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
             key = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
@@ -74,17 +71,17 @@ def init_earth_engine():
         else:
             ee.Initialize(project=PROJECT_ID)
 
-        return True, "Earth Engine connected"
+        return True, "Connected"
 
     except Exception as exc:
         return False, str(exc)
 
 
-EE_OK, EE_MESSAGE = init_earth_engine()
+EE_OK, EE_MESSAGE = connect_earth_engine()
 
 
 # ============================================================
-# HEADER FIRST
+# HEADER
 # ============================================================
 
 st.markdown(
@@ -93,14 +90,17 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="sub">🇮🇳 India-wide methane intelligence • '
-    'Sentinel-5P/TROPOMI • Landfill screening</div>',
+    '<div class="subtitle">'
+    "🇮🇳 India-wide methane intelligence • "
+    "Sentinel-5P/TROPOMI • Landfill screening"
+    "</div>",
     unsafe_allow_html=True,
 )
 
 if EE_OK:
     st.success(
-        f"🛰️ {EE_MESSAGE} • Project: {PROJECT_ID}"
+        "🛰️ Earth Engine connected • Project: "
+        + PROJECT_ID
     )
 else:
     st.error("Earth Engine connection failed.")
@@ -115,63 +115,45 @@ else:
 st.sidebar.header("⚙️ Monitoring")
 
 recent_days = st.sidebar.slider(
-    "Recent satellite window",
-    3,
-    14,
-    7,
+    "Recent window (days)",
+    min_value=3,
+    max_value=14,
+    value=7,
 )
 
 baseline_days = st.sidebar.slider(
-    "Historical baseline",
-    30,
-    180,
-    90,
+    "Baseline (days)",
+    min_value=30,
+    max_value=180,
+    value=90,
 )
 
 radius_km = st.sidebar.slider(
     "Landfill radius (km)",
-    1,
-    5,
-    2,
+    min_value=1,
+    max_value=5,
+    value=2,
 )
 
 uncertainty_limit = st.sidebar.slider(
-    "Max CH₄ uncertainty (ppb)",
-    1.0,
-    10.0,
-    5.0,
-    0.5,
+    "Maximum uncertainty (ppb)",
+    min_value=1.0,
+    max_value=10.0,
+    value=5.0,
+    step=0.5,
 )
 
 st.sidebar.markdown("---")
-st.sidebar.header("🗺️ Layers")
-
-show_ch4 = st.sidebar.checkbox(
-    "CH₄ concentration",
-    True,
-)
-
-show_anomaly = st.sidebar.checkbox(
-    "CH₄ anomaly",
-    True,
-)
-
-show_sites = st.sidebar.checkbox(
-    "Landfill locations",
-    True,
-)
 
 
 # ============================================================
-# LANDfill DATABASE
+# LANDFILL DATA
 # ============================================================
 
 def load_landfills():
-
     uploaded = st.sidebar.file_uploader(
         "Upload landfill CSV",
         type=["csv"],
-        help="Required columns: name, lat, lon",
     )
 
     if uploaded is not None:
@@ -193,28 +175,27 @@ def load_landfills():
                 ["Pirana", "Gujarat", 22.9831, 72.5802],
                 ["Jawaharnagar", "Telangana", 17.5147, 78.5852],
                 ["Kodungaiyur", "Tamil Nadu", 13.1360, 80.2640],
-                ["Durg-Rajnandgaon", "Chhattisgarh", 21.1904, 81.2848],
             ],
             columns=["name", "state", "lat", "lon"],
         )
-        source = "Demo locations"
+        source = "Demo database"
 
     df.columns = [
-        str(c).strip().lower()
-        for c in df.columns
+        str(col).strip().lower()
+        for col in df.columns
     ]
 
-    needed = {"name", "lat", "lon"}
-    missing = needed - set(df.columns)
+    required = {"name", "lat", "lon"}
+    missing = required - set(df.columns)
 
     if missing:
         st.error(
-            "CSV missing columns: "
+            "CSV must contain: name, lat, lon. Missing: "
             + ", ".join(sorted(missing))
         )
         st.stop()
 
-    df["name"] = df["name"].astype(str).str.strip()
+    df["name"] = df["name"].astype(str)
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
 
@@ -236,7 +217,7 @@ def load_landfills():
     return df, source
 
 
-landfills, database_source = load_landfills()
+landfills, landfill_source = load_landfills()
 
 st.sidebar.success(
     f"{len(landfills):,} sites loaded"
@@ -244,11 +225,11 @@ st.sidebar.success(
 
 
 # ============================================================
-# FAST INDIA GEOMETRY
+# INDIA GEOMETRY
 # ============================================================
 
 @st.cache_resource
-def get_india():
+def india_geometry():
     return (
         ee.FeatureCollection(
             "FAO/GAUL/2015/level0"
@@ -263,90 +244,68 @@ def get_india():
     )
 
 
-INDIA = get_india()
+INDIA = india_geometry()
 
 
 # ============================================================
-# IMPORTANT FIX:
-# NO getInfo(), NO latest-observation lookup,
-# NO national reduceRegions BEFORE PAGE/MAP.
-#
-# We use a date window around the current UTC date.
-# Heavy exact site analysis happens ONLY after the button.
+# DATE WINDOW
 # ============================================================
 
-now_utc = datetime.now(timezone.utc)
+today = datetime.now(timezone.utc).date()
 
-recent_end_date = (
-    now_utc + timedelta(days=1)
+recent_start = (
+    today - timedelta(days=recent_days)
 ).strftime("%Y-%m-%d")
 
-recent_start_date = (
-    now_utc - timedelta(days=recent_days)
+recent_end = (
+    today + timedelta(days=1)
 ).strftime("%Y-%m-%d")
 
-baseline_end_date = recent_start_date
-
-baseline_start_date = (
-    now_utc
+baseline_start = (
+    today
     - timedelta(
         days=recent_days + baseline_days
     )
 ).strftime("%Y-%m-%d")
 
+baseline_end = recent_start
+
 
 # ============================================================
-# LIGHTWEIGHT SATELLITE COLLECTION
+# SATELLITE COLLECTION
 # ============================================================
 
-@st.cache_resource
-def make_recent_collection( start_date, end_date, uncertainty, ):
+def satellite_collection(start_date, end_date):
     collection = (
-        ee.ImageCollection(S5P)
-        .filterDate(
-            start_date,
-            end_date,
-        )
+        ee.ImageCollection(S5P_DATASET)
+        .filterDate(start_date, end_date)
         .filterBounds(INDIA)
         .select(
             [
-                CH4,
-                CH4_UNCERTAINTY,
+                CH4_BAND,
+                UNCERTAINTY_BAND,
             ]
         )
     )
 
-    def mask(image):
-        return image.select(CH4).updateMask(
-            image.select(CH4_UNCERTAINTY).lte(
-                uncertainty
+    def mask_image(image):
+        methane = image.select(CH4_BAND)
+        uncertainty = image.select(
+            UNCERTAINTY_BAND
+        )
+
+        return methane.updateMask(
+            uncertainty.lte(
+                uncertainty_limit
             )
         )
 
-    return collection.map(mask)
+    return collection.map(mask_image)
 
 
-recent_collection = make_recent_collection(
-    recent_start_date,
-    recent_end_date,
-    uncertainty_limit,
-)
-
-
-# ============================================================
-# MAP PRODUCT
-# This is intentionally simple so the page can render quickly.
-# ============================================================
-
-recent_methane = (
-    recent_collection
-    .median()
-    .rename("CH4")
-)
-
-st.markdown(
-    f""" <div class="card"> <b>🛰️ Satellite monitoring window</b><br> {recent_start_date} → {recent_end_date} <br><br> <b>Database:</b> {database_source} &nbsp; • &nbsp; <b>Sites:</b> {len(landfills):,} <br><br> <span class="small"> Detailed landfill calculations are deliberately delayed until you press RUN INDIA-WIDE SCAN. </span> </div> """,
-    unsafe_allow_html=True,
+recent_collection = satellite_collection(
+    recent_start,
+    recent_end,
 )
 
 
@@ -356,6 +315,11 @@ st.markdown(
 
 st.subheader("🗺️ India Methane Map")
 
+st.markdown(
+    f""" <div class="card"> <b>Satellite window:</b> {recent_start} → {recent_end} &nbsp; • &nbsp; <b>Landfill database:</b> {landfill_source} &nbsp; • &nbsp; <b>Sites:</b> {len(landfills):,} </div> """,
+    unsafe_allow_html=True,
+)
+
 india_map = folium.Map(
     location=[22.5, 80.0],
     zoom_start=5,
@@ -364,62 +328,69 @@ india_map = folium.Map(
 )
 
 
-if show_ch4:
-    try:
-        ch4_layer = recent_methane.getMapId(
-            {
-                "min": 1750,
-                "max": 2000,
-                "palette": [
-                    "050505",
-                    "1d4ed8",
-                    "06b6d4",
-                    "22c55e",
-                    "eab308",
-                    "f97316",
-                    "dc2626",
-                ],
-            }
-        )
+# Only create the visual satellite layer.
+# No reduceRegions/getInfo is executed here.
+try:
+    recent_image = (
+        recent_collection
+        .median()
+        .rename("CH4")
+    )
 
-        folium.TileLayer(
-            tiles=ch4_layer["tile_fetcher"].url_format,
-            attr="Copernicus Sentinel-5P/TROPOMI",
-            name="🛰️ CH₄ concentration",
-            overlay=True,
-            control=True,
-            opacity=0.60,
-        ).add_to(india_map)
+    map_id = recent_image.getMapId(
+        {
+            "min": 1750,
+            "max": 2000,
+            "palette": [
+                "050505",
+                "1d4ed8",
+                "06b6d4",
+                "22c55e",
+                "eab308",
+                "f97316",
+                "dc2626",
+            ],
+        }
+    )
 
-    except Exception as exc:
-        st.warning(
-            "Satellite CH₄ layer is temporarily unavailable: "
-            + str(exc)
-        )
+    folium.TileLayer(
+        tiles=map_id["tile_fetcher"].url_format,
+        attr="Copernicus Sentinel-5P/TROPOMI",
+        name="🛰️ CH₄",
+        overlay=True,
+        control=True,
+        opacity=0.65,
+    ).add_to(india_map)
+
+except Exception as exc:
+    st.warning(
+        "Satellite map layer unavailable: "
+        + str(exc)
+    )
 
 
-if show_sites:
-
-    points = [
-        [
-            float(row["lat"]),
-            float(row["lon"]),
-            str(row["name"]),
-        ]
-        for _, row in landfills.iterrows()
+# Landfill markers
+marker_points = [
+    [
+        float(row["lat"]),
+        float(row["lon"]),
+        str(row["name"]),
     ]
+    for _, row in landfills.iterrows()
+]
 
-    if points:
-        plugins.FastMarkerCluster(
-            points
-        ).add_to(india_map)
-
+if marker_points:
+    plugins.FastMarkerCluster(
+        marker_points
+    ).add_to(india_map)
 
 folium.LayerControl(
     collapsed=False
 ).add_to(india_map)
 
-plugins.Fullscreen().add_to(india_map)
+plugins.Fullscreen().add_to(
+    india_map
+)
 
 st_folium(
     india_map,
@@ -430,15 +401,17 @@ st_folium(
 
 
 # ============================================================
-# NATIONAL SCAN BUTTON
+# ANALYSIS BUTTON
 # ============================================================
 
-st.subheader("🇮🇳 India-wide Landfill Analysis")
+st.subheader(
+    "🇮🇳 India-wide Landfill Analysis"
+)
 
 st.info(
-    "The page and map above are lightweight. "
-    "The heavy Earth Engine site-by-site analysis starts only "
-    "after pressing the button below."
+    "Dashboard and map are loaded first. "
+    "Detailed satellite analysis starts only after "
+    "you press the button."
 )
 
 run_scan = st.button(
@@ -449,15 +422,13 @@ run_scan = st.button(
 
 
 # ============================================================
-# HEAVY FUNCTIONS - ONLY USED AFTER BUTTON
+# HELPERS
 # ============================================================
 
-def build_fc(df):
-
+def make_feature_collection(df):
     features = []
 
     for _, row in df.iterrows():
-
         props = {
             "site_id": str(row["site_id"]),
             "name": str(row["name"]),
@@ -486,69 +457,58 @@ def build_fc(df):
     return ee.FeatureCollection(features)
 
 
-def lookup(features, field):
+def safe_float(value):
+    try:
+        if value is None:
+            return np.nan
+        return float(value)
+    except (TypeError, ValueError):
+        return np.nan
 
-    values = {}
+
+def get_property_map(features, field):
+    result = {}
 
     for feature in features:
-
         props = feature.get(
             "properties",
             {},
         )
 
         site_id = str(
-            props.get(
-                "site_id",
-                "",
-            )
+            props.get("site_id", "")
         )
 
-        values[site_id] = props.get(field)
+        result[site_id] = safe_float(
+            props.get(field)
+        )
 
-    return values
+    return result
 
+
+# ============================================================
+# ONE CHUNK
+# ============================================================
 
 def analyse_chunk(df):
-
-    recent = recent_collection
-
-    baseline_collection = (
-        ee.ImageCollection(S5P)
-        .filterDate(
-            baseline_start_date,
-            baseline_end_date,
-        )
-        .filterBounds(INDIA)
-        .select(
-            [
-                CH4,
-                CH4_UNCERTAINTY,
-            ]
-        )
+    recent = satellite_collection(
+        recent_start,
+        recent_end,
     )
 
-    def mask_baseline(image):
-        return image.select(CH4).updateMask(
-            image.select(
-                CH4_UNCERTAINTY
-            ).lte(
-                uncertainty_limit
-            )
-        )
-
-    baseline = baseline_collection.map(
-        mask_baseline
+    baseline = satellite_collection(
+        baseline_start,
+        baseline_end,
     )
 
     recent_image = (
         recent.median()
-        .rename("recent")
+        .rename("recent_ch4")
     )
 
     baseline_image = (
         baseline.median()
-        .rename("baseline")
+        .rename("baseline_ch4")
     )
 
     anomaly_image = (
@@ -559,9 +519,7 @@ def analyse_chunk(df):
 
     std_image = (
         baseline
-        .reduce(
-            ee.Reducer.stdDev()
-        )
+        .reduce(ee.Reducer.stdDev())
         .rename("std")
     )
 
@@ -575,18 +533,16 @@ def analyse_chunk(df):
         .rename("zscore")
     )
 
-    fc = build_fc(df)
+    sites = make_feature_collection(df)
 
-    inner = fc.map(
-        lambda feature:
-        feature.buffer(
+    landfill_regions = sites.map(
+        lambda feature: feature.buffer(
             radius_km * 1000
         )
     )
 
-    background = fc.map(
-        lambda feature:
-        feature.buffer(
+    background_regions = sites.map(
+        lambda feature: feature.buffer(
             radius_km * 3000
         )
     )
@@ -600,177 +556,178 @@ def analyse_chunk(df):
         ]
     )
 
-    inner_data = (
+    raw = (
         stack
         .reduceRegions(
-            collection=inner,
+            collection=landfill_regions,
             reducer=ee.Reducer.mean(),
-            scale=SCALE,
+            scale=TROPOMI_SCALE,
             tileScale=8,
         )
         .getInfo()
-        .get(
-            "features",
-            [],
-        )
     )
 
-    background_data = (
+    raw_background = (
         anomaly_image
         .rename("background")
         .reduceRegions(
-            collection=background,
+            collection=background_regions,
             reducer=ee.Reducer.mean(),
-            scale=SCALE,
+            scale=TROPOMI_SCALE,
             tileScale=8,
         )
         .getInfo()
-        .get(
-            "features",
-            [],
-        )
     )
 
-    recent_lookup = lookup(
-        inner_data,
-        "recent",
+    features = raw.get(
+        "features",
+        []
     )
 
-    baseline_lookup = lookup(
-        inner_data,
-        "baseline",
+    background_features = raw_background.get(
+        "features",
+        []
     )
 
-    anomaly_lookup = lookup(
-        inner_data,
+    recent_map = get_property_map(
+        features,
+        "recent_ch4",
+    )
+
+    baseline_map = get_property_map(
+        features,
+        "baseline_ch4",
+    )
+
+    anomaly_map = get_property_map(
+        features,
         "anomaly",
     )
 
-    z_lookup = lookup(
-        inner_data,
+    zscore_map = get_property_map(
+        features,
         "zscore",
     )
 
-    background_lookup = lookup(
-        background_data,
+    background_map = get_property_map(
+        background_features,
         "background",
     )
 
-    result = df.copy()
+    output = df.copy()
 
-    result["recent_ch4_ppb"] = (
-        result["site_id"].map(
-            lambda x:
-            recent_lookup.get(str(x))
+    output["recent_ch4_ppb"] = (
+        output["site_id"].map(
+            lambda x: recent_map.get(
+                str(x),
+                np.nan,
+            )
         )
     )
 
-    result["baseline_ch4_ppb"] = (
-        result["site_id"].map(
-            lambda x:
-            baseline_lookup.get(str(x))
+    output["baseline_ch4_ppb"] = (
+        output["site_id"].map(
+            lambda x: baseline_map.get(
+                str(x),
+                np.nan,
+            )
         )
     )
 
-    result["anomaly_ppb"] = (
-        result["site_id"].map(
-            lambda x:
-            anomaly_lookup.get(str(x))
+    output["anomaly_ppb"] = (
+        output["site_id"].map(
+            lambda x: anomaly_map.get(
+                str(x),
+                np.nan,
+            )
         )
     )
 
-    result["zscore"] = (
-        result["site_id"].map(
-            lambda x:
-            z_lookup.get(str(x))
+    output["zscore"] = (
+        output["site_id"].map(
+            lambda x: zscore_map.get(
+                str(x),
+                np.nan,
+            )
         )
     )
 
-    result["background_anomaly_ppb"] = (
-        result["site_id"].map(
-            lambda x:
-            background_lookup.get(str(x))
+    output["background_anomaly_ppb"] = (
+        output["site_id"].map(
+            lambda x: background_map.get(
+                str(x),
+                np.nan,
+            )
         )
     )
 
-    result["spatial_contrast_ppb"] = (
-        pd.to_numeric(
-            result["anomaly_ppb"],
-            errors="coerce",
-        )
-        -
-        pd.to_numeric(
-            result["background_anomaly_ppb"],
-            errors="coerce",
-        )
+    output["spatial_contrast_ppb"] = (
+        output["anomaly_ppb"]
+        - output["background_anomaly_ppb"]
     )
 
     current = pd.to_numeric(
-        result["recent_ch4_ppb"],
+        output["recent_ch4_ppb"],
         errors="coerce",
     )
 
-    baseline_values = pd.to_numeric(
-        result["baseline_ch4_ppb"],
+    baseline_value = pd.to_numeric(
+        output["baseline_ch4_ppb"],
         errors="coerce",
     )
 
-    anomaly_values = pd.to_numeric(
-        result["anomaly_ppb"],
+    anomaly_value = pd.to_numeric(
+        output["anomaly_ppb"],
         errors="coerce",
     )
 
-    z_values = pd.to_numeric(
-        result["zscore"],
+    zscore_value = pd.to_numeric(
+        output["zscore"],
         errors="coerce",
     )
 
-    spatial_values = pd.to_numeric(
-        result["spatial_contrast_ppb"],
+    spatial_value = pd.to_numeric(
+        output["spatial_contrast_ppb"],
         errors="coerce",
     )
 
-    result["anomaly_percent"] = np.where(
-        baseline_values > 0,
+    output["anomaly_percent"] = np.where(
+        baseline_value > 0,
         (
-            (
-                current
-                - baseline_values
-            )
-            / baseline_values
-        )
-        * 100,
+            (current - baseline_value)
+            / baseline_value
+        ) * 100,
         np.nan,
     )
 
     anomaly_component = (
-        anomaly_values
+        anomaly_value
         .fillna(0)
         .clip(0, 150)
         / 150
     )
 
     z_component = (
-        z_values
+        zscore_value
         .fillna(0)
         .clip(0, 5)
         / 5
     )
 
     spatial_component = (
-        spatial_values
+        spatial_value
         .fillna(0)
         .clip(0, 100)
         / 100
     )
 
     data_component = (
-        result["recent_ch4_ppb"]
+        output["recent_ch4_ppb"]
         .notna()
         .astype(float)
     )
 
-    result["evidence_score"] = (
+    output["evidence_score"] = (
         100
         * (
             0.50 * anomaly_component
@@ -780,22 +737,27 @@ def analyse_chunk(df):
         )
     ).clip(0, 100)
 
-    result["confidence"] = (
+    output["confidence"] = (
         100
         * (
             0.70 * data_component
-            + 0.30 * (
+            + 0.30
+            * (
                 z_component > 0.20
             ).astype(float)
         )
     ).clip(0, 100)
 
-    def classify(row):
+    def status(row):
+        score = safe_float(
+            row["evidence_score"]
+        )
 
-        score = row["evidence_score"]
-        confidence = row["confidence"]
+        confidence = safe_float(
+            row["confidence"]
+        )
 
-        if pd.isna(score):
+        if np.isnan(score):
             return "NO DATA"
 
         if score >= 70 and confidence >= 60:
@@ -806,25 +768,26 @@ def analyse_chunk(df):
 
         return "LOW"
 
-    result["status"] = result.apply(
-        classify,
+    output["status"] = output.apply(
+        status,
         axis=1,
     )
 
-    return result
+    return output
 
 
 # ============================================================
-# RUN ONLY WHEN BUTTON IS PRESSED
+# RUN SCAN
 # ============================================================
 
 if run_scan:
-
-    chunk_size = 250
+    chunk_size = 100
 
     chunks = [
-        landfills[i:i + chunk_size].copy()
-        for i in range(
+        landfills[
+            start:start + chunk_size
+        ].copy()
+        for start in range(
             0,
             len(landfills),
             chunk_size,
@@ -833,52 +796,34 @@ if run_scan:
 
     progress = st.progress(
         0,
-        text="Starting satellite scan..."
+        text="Starting satellite analysis...",
     )
 
-    results = []
+    all_results = []
 
     try:
-
         for index, chunk in enumerate(chunks):
-
-            chunk_result = analyse_chunk(
-                chunk
-            )
-
-            results.append(
-                chunk_result
-            )
+            result = analyse_chunk(chunk)
+            all_results.append(result)
 
             done = index + 1
             total = len(chunks)
 
             progress.progress(
-                int(
-                    done / total * 100
-                ),
+                int(done / total * 100),
                 text=(
-                    "Analysing "
-                    + str(
-                        min(
-                            done * chunk_size,
-                            len(landfills),
-                        )
-                    )
-                    + "/"
-                    + str(len(landfills))
-                    + " landfill sites"
+                    f"Analysed "
+                    f"{min(done * chunk_size, len(landfills)):,}"
+                    f"/{len(landfills):,} sites"
                 ),
             )
 
-        final = pd.concat(
-            results,
+        final_results = pd.concat(
+            all_results,
             ignore_index=True,
-        ).copy()
+        )
 
-        st.session_state[
-            "methane_results"
-        ] = final
+        st.session_state["results"] = final_results
 
         progress.empty()
 
@@ -887,27 +832,113 @@ if run_scan:
         )
 
     except Exception as exc:
-
         progress.empty()
 
         st.error(
-            "❌ Scan failed"
+            "❌ Satellite analysis failed."
         )
 
-        st.code(
-            str(exc)
-        )
+        st.exception(exc)
 
 
 # ============================================================
+# RESULTS
 # ============================================================
-# DISPLAY RESULTS - ROBUST / TYPE-SAFE
-# ============================================================
 
-if "methane_results" in st.session_state:
+if "results" in st.session_state:
+    results = st.session_state["results"].copy()
 
-    raw_results = st.session_state["methane_results"]
+    # Defensive validation
+    if not isinstance(results, pd.DataFrame):
+        st.error("Invalid scan result. Please run the scan again.")
+        st.stop()
 
-    # Streamlit sessions can survive code changes. Never assume that
-    # an old object in session_state is still a DataFrame.
-    if not isinstance(raw_results, pd.DataFra
+    required_result_columns = [
+        "name",
+        "lat",
+        "lon",
+        "recent_ch4_ppb",
+        "baseline_ch4_ppb",
+        "anomaly_ppb",
+        "evidence_score",
+        "confidence",
+        "status",
+    ]
+
+    for column in required_result_columns:
+        if column not in results.columns:
+            results[column] = np.nan
+
+    results["evidence_score"] = pd.to_numeric(
+        results["evidence_score"],
+        errors="coerce",
+    )
+
+    results["confidence"] = pd.to_numeric(
+        results["confidence"],
+        errors="coerce",
+    )
+
+    results["anomaly_ppb"] = pd.to_numeric(
+        results["anomaly_ppb"],
+        errors="coerce",
+    )
+
+    results = results.sort_values(
+        by=[
+            "evidence_score",
+            "confidence",
+        ],
+        ascending=False,
+        na_position="last",
+    ).reset_index(drop=True)
+
+    st.subheader(
+        "🔥 Methane Priority Ranking"
+    )
+
+    high_count = int(
+        (
+            results["status"] == "HIGH"
+        ).sum()
+    )
+
+    elevated_count = int(
+        (
+            results["status"] == "ELEVATED"
+        ).sum()
+    )
+
+    valid_count = int(
+        results["recent_ch4_ppb"]
+        .notna()
+        .sum()
+    )
+
+    avg_score = results[
+        "evidence_score"
+    ].mean()
+
+    a, b, c, d = st.columns(4)
+
+    a.metric(
+        "Sites analysed",
+        f"{len(results):,}",
+    )
+
+    b.metric(
+        "Usable CH₄",
+        f"{valid_count:,}",
+    )
+
+    c.metric(
+        "HIGH evidence",
+        f"{high_count:,}",
+    )
+
+    d.metric(
+        "Average evidence",
+        (
+            f"{avg_score:.1f}/100"
+            if pd.notna(avg_score)
+      
