@@ -9,35 +9,34 @@ import pandas as pd
 import streamlit as st
 from folium import plugins
 from streamlit_folium import st_folium
-from streamlit_autorefresh import st_autorefresh
 
 
 # ============================================================
 # ZERO WASTE.AI
-# INDIA METHANE INTELLIGENCE ENGINE
+# INDIA METHANE INTELLIGENCE PLATFORM
 # ============================================================
 
-APP_NAME = "ZeroWaste.AI"
 PROJECT_ID = "stalwart-fx-490910-e3"
 
-S5P = "COPERNICUS/S5P/OFFL/L3_CH4"
-S2 = "COPERNICUS/S2_SR_HARMONIZED"
-S2_CLOUD = "COPERNICUS/S2_CLOUD_PROBABILITY"
-ERA5 = "ECMWF/ERA5/HOURLY"
+S5P_DATASET = "COPERNICUS/S5P/OFFL/L3_CH4"
 
-CH4 = "CH4_column_volume_mixing_ratio_dry_air_bias_corrected"
-CH4_ERR = "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+CH4_BAND = (
+    "CH4_column_volume_mixing_ratio_dry_air_bias_corrected"
+)
 
-S5P_SCALE = 1113.2
-ERA5_SCALE = 27830
+CH4_UNCERTAINTY_BAND = (
+    "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+)
+
+TROPOMI_SCALE = 1113.2
 
 
 # ============================================================
-# PAGE
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="ZeroWaste.AI — Methane Intelligence",
+    page_title="ZeroWaste.AI",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -45,7 +44,7 @@ st.set_page_config(
 
 
 # ============================================================
-# STYLE
+# UI
 # ============================================================
 
 st.markdown(
@@ -56,23 +55,23 @@ st.markdown(
         background:
         radial-gradient(
             circle at 90% 0%,
-            rgba(14,165,233,.13),
+            rgba(56,189,248,0.12),
             transparent 30%
         ),
         radial-gradient(
-            circle at 10% 20%,
-            rgba(16,185,129,.08),
-            transparent 25%
+            circle at 5% 20%,
+            rgba(34,197,94,0.08),
+            transparent 28%
         ),
         #020617;
-        color:#f8fafc;
+        color: #f8fafc;
     }
 
     .hero {
-        font-size:2.5rem;
-        font-weight:950;
-        line-height:1.05;
-        letter-spacing:-1px;
+        font-size: 3.1rem;
+        font-weight: 950;
+        letter-spacing: -2px;
+        line-height: 1;
         background:
         linear-gradient(
             90deg,
@@ -80,29 +79,28 @@ st.markdown(
             #22c55e,
             #f43f5e
         );
-        -webkit-background-clip:text;
-        -webkit-text-fill-color:transparent;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
 
     .subtitle {
-        color:#94a3b8;
-        font-size:1rem;
-        margin:8px 0 18px;
+        color: #94a3b8;
+        font-size: 1.05rem;
+        margin-top: 10px;
+        margin-bottom: 20px;
     }
 
     .card {
-        background:rgba(15,23,42,.86);
-        border:1px solid rgba(148,163,184,.14);
-        border-radius:16px;
-        padding:15px;
+        background: rgba(15,23,42,0.88);
+        border: 1px solid rgba(148,163,184,0.16);
+        border-radius: 15px;
+        padding: 16px;
+        margin: 10px 0;
     }
 
-    .info {
-        background:rgba(14,116,144,.13);
-        border-left:5px solid #38bdf8;
-        border-radius:10px;
-        padding:13px;
-        margin:12px 0;
+    .small {
+        color: #94a3b8;
+        font-size: 0.85rem;
     }
 
     </style>
@@ -112,31 +110,30 @@ st.markdown(
 
 
 # ============================================================
-# EARTH ENGINE
+# EARTH ENGINE CONNECTION
 # ============================================================
 
 @st.cache_resource
-def init_earth_engine():
+def initialize_earth_engine():
 
     try:
 
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
 
-            key = dict(
+            service_account = dict(
                 st.secrets["GCP_SERVICE_ACCOUNT"]
             )
 
-            if "private_key" in key:
-                key["private_key"] = (
-                    key["private_key"]
+            if "private_key" in service_account:
+
+                service_account["private_key"] = (
+                    service_account["private_key"]
                     .replace("\\n", "\n")
                 )
 
-            credentials = (
-                ee.ServiceAccountCredentials(
-                    key["client_email"],
-                    key_data=json.dumps(key),
-                )
+            credentials = ee.ServiceAccountCredentials(
+                service_account["client_email"],
+                key_data=json.dumps(service_account),
             )
 
             ee.Initialize(
@@ -152,18 +149,24 @@ def init_earth_engine():
 
         return True, "Earth Engine connected"
 
-    except Exception as e:
+    except Exception as error:
 
-        return False, str(e)
+        return False, str(error)
 
 
-EE_OK, EE_MESSAGE = init_earth_engine()
+EE_CONNECTED, EE_MESSAGE = (
+    initialize_earth_engine()
+)
 
-if not EE_OK:
+
+if not EE_CONNECTED:
 
     st.error(
-        "Earth Engine connection failed:\n\n"
-        + EE_MESSAGE
+        "❌ Google Earth Engine connection failed"
+    )
+
+    st.code(
+        EE_MESSAGE
     )
 
     st.stop()
@@ -179,9 +182,12 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="subtitle">'
-    'India Methane Intelligence • Satellite Evidence • Landfill Monitoring'
-    '</div>',
+    """
+    <div class="subtitle">
+    🇮🇳 India-wide methane intelligence •
+    Sentinel-5P/TROPOMI • Landfill screening
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -191,199 +197,63 @@ st.success(
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR CONTROLS
 # ============================================================
 
-st.sidebar.markdown(
-    "## ⚙️ Monitoring Engine"
-)
-
-refresh_minutes = st.sidebar.slider(
-    "Auto refresh",
-    5,
-    60,
-    15,
-    5,
-)
-
-st_autorefresh(
-    interval=refresh_minutes * 60 * 1000,
-    key="zero_waste_refresh",
+st.sidebar.header(
+    "⚙️ Satellite Engine"
 )
 
 recent_days = st.sidebar.slider(
-    "Recent CH₄ window",
-    3,
-    14,
-    7,
+    "Recent observation window",
+    min_value=3,
+    max_value=14,
+    value=7,
 )
 
 baseline_days = st.sidebar.slider(
     "Historical baseline",
-    30,
-    180,
-    90,
+    min_value=30,
+    max_value=180,
+    value=90,
 )
 
 radius_km = st.sidebar.slider(
-    "Landfill radius",
-    1,
-    5,
-    2,
+    "Landfill analysis radius",
+    min_value=1,
+    max_value=5,
+    value=2,
 )
 
-qa_min = st.sidebar.slider(
-    "Minimum TROPOMI QA",
-    0.40,
-    0.90,
-    0.50,
-    0.05,
-)
-
-uncertainty_max = st.sidebar.slider(
+uncertainty_limit = st.sidebar.slider(
     "Maximum CH₄ uncertainty",
-    1.0,
-    10.0,
-    5.0,
-    0.5,
+    min_value=1.0,
+    max_value=10.0,
+    value=5.0,
+    step=0.5,
 )
 
-st.sidebar.markdown(
-    "## 🗺️ Map Layers"
+st.sidebar.markdown("---")
+
+st.sidebar.header(
+    "🗺️ Map Layers"
 )
 
 show_ch4 = st.sidebar.checkbox(
     "CH₄ concentration",
-    True,
+    value=True,
 )
 
 show_anomaly = st.sidebar.checkbox(
     "CH₄ anomaly",
-    True,
+    value=True,
 )
 
-show_markers = st.sidebar.checkbox(
+show_landfills = st.sidebar.checkbox(
     "Landfill locations",
-    True,
-)
-
-st.sidebar.markdown(
-    "## 🛰️ Sentinel-2"
-)
-
-s2_days = st.sidebar.slider(
-    "S2 lookback",
-    10,
-    90,
-    30,
-)
-
-cloud_limit = st.sidebar.slider(
-    "Cloud probability",
-    5,
-    50,
-    20,
+    value=True,
 )
 
 
 # ============================================================
-# INDIA
-# ============================================================
-
-@st.cache_resource
-def get_india():
-
-    return (
-        ee.FeatureCollection(
-            "FAO/GAUL/2015/level0"
-        )
-        .filter(
-            ee.Filter.eq(
-                "ADM0_NAME",
-                "India",
-            )
-        )
-        .geometry()
-    )
-
-
-INDIA = get_india()
-
-
-# ============================================================
-# LANDFILLS
-# ============================================================
-
-def load_landfills():
-
-    uploaded = st.sidebar.file_uploader(
-        "Upload India landfill CSV",
-        type=["csv"],
-    )
-
-    if uploaded is not None:
-
-        df = pd.read_csv(
-            uploaded
-        )
-
-        source = "Uploaded landfill CSV"
-
-    elif os.path.exists(
-        "landfills.csv"
-    ):
-
-        df = pd.read_csv(
-            "landfills.csv"
-        )
-
-        source = "Repository landfill CSV"
-
-    else:
-
-        df = pd.DataFrame(
-            [
-                [
-                    "Ghazipur",
-                    "Delhi",
-                    "Delhi",
-                    28.6231,
-                    77.3288,
-                ],
-                [
-                    "Bhalswa",
-                    "Delhi",
-                    "Delhi",
-                    28.7410,
-                    77.1517,
-                ],
-                [
-                    "Okhla",
-                    "Delhi",
-                    "Delhi",
-                    28.5303,
-                    77.2789,
-                ],
-                [
-                    "Deonar",
-                    "Maharashtra",
-                    "Mumbai",
-                    19.0573,
-                    72.9304,
-                ],
-                [
-                    "Mulund",
-                    "Maharashtra",
-                    "Mumbai",
-                    19.1678,
-                    72.9567,
-                ],
-                [
-                    "Pirana",
-                    "Gujarat",
-                    "Ahmedabad",
-                    22.9831,
-                    72.5802,
-                ],
-                [
-                    "
+# INDIA GE
