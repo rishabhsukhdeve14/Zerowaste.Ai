@@ -16,7 +16,7 @@ import streamlit_folium as st_folium
 # 1. PAGE CONFIGURATION & INITIALIZATION
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Zero Waste Solutions — Master Physics & Geotechnical Engine",
+    page_title="Zero Waste Solutions — Master Physics & Fire Prevention Engine",
     page_icon="🛰️",
     layout="wide",
 )
@@ -27,10 +27,7 @@ PROJECT_ID = "stalwart-fx-490910-e3"
 def init_earth_engine():
     try:
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
-            # Streamlit secrets dict load
             key_dict = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
-            
-            # Clean up double escaped newlines if any remain
             if "private_key" in key_dict:
                 key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
 
@@ -44,7 +41,6 @@ def init_earth_engine():
             ee.Initialize(project=PROJECT_ID)
             return True, f"GEE Connected (Project: {PROJECT_ID})"
     except Exception as e:
-        # Secure error string (credentials screen par expose na ho)
         error_msg = str(e).split("http")[0] if "http" in str(e) else str(e)
         return False, f"GEE Auth Error: {error_msg}"
 
@@ -104,8 +100,65 @@ def fetch_gee_sentinel5p_methane(lat, lon):
         return 1862.1
 
 # -----------------------------------------------------------------------------
-# 4. GEOTECHNICAL & THERMODYNAMIC ENGINE
+# 4. LANDFILL FIRE PHYSICS & THERMODYNAMICS ENGINE
 # -----------------------------------------------------------------------------
+class LandfillFirePhysics:
+    @staticmethod
+    def calculate_fire_risk(temp_c, ch4_ppb, pressure_hpa, wind_speed, height_m):
+        """
+        Calculates Landfill Spontaneous Combustion & Fire Risk using:
+        1. Fourier's Law of Heat Conduction (Heat Trapping in Insulating Waste)
+        2. Ideal Gas Law (PV = nRT Expansion & Buoyancy)
+        3. Methane LEL (Lower Explosive Limit Threshold)
+        """
+        # Fourier Heat Trapping Factor (Thermal CONDUCTIVITY k_waste ~ 0.2 W/mK)
+        # Heat generated > Heat dissipated during high ambient temps
+        k_waste = 0.2 
+        internal_est_temp_c = temp_c + (height_m * 0.42) # Internal core heat build-up
+        
+        # Fourier Heat Flux Dissipation Rate (q = -k * dT/dx)
+        heat_flux_q = k_waste * ((internal_est_temp_c - temp_c) / height_m)
+        
+        # Ideal Gas Buoyancy Factor (Hot Methane expands & moves up)
+        gas_buoyancy_factor = (pressure_hpa / 1013.25) * ((internal_est_temp_c + 273.15) / 298.15)
+        
+        # Methane LEL Risk Ratio (Baseline ~ 1800 ppb)
+        ch4_risk_factor = ch4_ppb / 1800.0
+        
+        # Composite Fire Risk Index Formula
+        raw_risk = (
+            (0.35 * (internal_est_temp_c / 45.0)) + 
+            (0.40 * ch4_risk_factor) + 
+            (0.15 * gas_buoyancy_factor) + 
+            (0.10 * (wind_speed / 10.0))
+        )
+        
+        fire_risk_percent = min(round(raw_risk * 65.0, 1), 99.9)
+        
+        # Determine Status & Advisory
+        if fire_risk_percent > 75:
+            status = "CRITICAL (High Spontaneous Combustion Risk)"
+            alert_color = "red"
+            advisory = "CRITICAL: Trigger Soil/Clay Capping immediately & ramp Vacuum Gas Extraction to 150 m³/hr!"
+        elif fire_risk_percent > 50:
+            status = "WARNING (Thermal Runaway Building Up)"
+            alert_color = "orange"
+            advisory = "WARNING: Activate Core Venting Pipes and spray water mist on surface fissures."
+        else:
+            status = "NORMAL (Low Ignition Risk)"
+            alert_color = "green"
+            advisory = "NORMAL: Maintain standard degassing schedules and passive thermal monitoring."
+            
+        return {
+            "internal_temp_est_c": round(internal_est_temp_c, 1),
+            "heat_flux_q": round(heat_flux_q, 3),
+            "gas_buoyancy_factor": round(gas_buoyancy_factor, 2),
+            "fire_risk_percent": fire_risk_percent,
+            "status": status,
+            "alert_color": alert_color,
+            "advisory": advisory
+        }
+
 class GeotechThermodynamics:
     @staticmethod
     def calculate_drilling_plan(lat, lon, height_m, waste_mass_mt, live_ch4_ppb, live_pressure_hpa):
@@ -209,16 +262,21 @@ enable_pinn = st.sidebar.checkbox("Run PINN AutoDiff Engine", value=True)
 enable_sindy = st.sidebar.checkbox("Run SINDy Identification", value=True)
 enable_havok = st.sidebar.checkbox("Run HAVOK Matrix", value=True)
 
-# Fetch Live Weather & Satellite Data
+# Fetch Live Data
 with st.spinner("Fetching Live Sentinel-5P Satellite & Telemetry Feed..."):
     weather_data = fetch_live_weather(lat, lon)
     live_ch4 = fetch_gee_sentinel5p_methane(lat, lon)
+
+# Fire Physics & Geotech Computations
+fire_analysis = LandfillFirePhysics.calculate_fire_risk(
+    weather_data["temp_c"], live_ch4, weather_data["pressure_hpa"], weather_data["wind_speed"], height_m
+)
 
 depth_m, gas_vol_m3, suction_rate, boreholes = GeotechThermodynamics.calculate_drilling_plan(
     lat, lon, height_m, waste_mass, live_ch4, weather_data["pressure_hpa"]
 )
 
-# Physics Computations
+# Brunton & Kutz Physics Computations
 t_grid = np.linspace(0, 10, 100)
 x_spatial = np.linspace(-5, 5, 50)
 T_mat, X_mat = np.meshgrid(t_grid, x_spatial)
@@ -247,7 +305,33 @@ m1.metric("Live Surface Temp", f"{weather_data['temp_c']} °C", f"Wind: {weather
 m2.metric("Barometric Pressure", f"{weather_data['pressure_hpa']} hPa", f"Humidity: {weather_data['humidity']}%")
 m3.metric("Sentinel-5P CH₄", f"{live_ch4} ppb", "TROPOMI Orbit")
 m4.metric("Optimum Drill Depth", f"{depth_m} meters", f"Core Vol: {gas_vol_m3/1e6:.2f}M-m³")
-m5.metric("Target Suction Rate", f"{suction_rate} m³/hr", f"PINN Res: {pinn_res:.5f}")
+m5.metric("Fire Risk Index", f"{fire_analysis['fire_risk_percent']}%", fire_analysis["status"].split(" ")[0])
+
+st.markdown("---")
+
+# -----------------------------------------------------------------------------
+# NEW SECTION: FIRE PREVENTION & THERMODYNAMIC RISK MODULE
+# -----------------------------------------------------------------------------
+st.subheader("🔥 Landfill Fire Prevention & Early Warning System (Physics Engine)")
+
+fc1, fc2, fc3 = st.columns([1, 1, 1.2])
+
+with fc1:
+    st.info(f"**Est. Core Temperature ($T_{{core}}$):** {fire_analysis['internal_temp_est_c']} °C")
+    st.caption("Calculated using Fourier Trapped Heat Conduction ($q = -k \\nabla T$)")
+
+with fc2:
+    st.warning(f"**Gas Buoyancy Factor ($PV=nRT$):** {fire_analysis['gas_buoyancy_factor']}")
+    st.caption("Pressure & Thermal Expansion driving Methane to Surface")
+
+with fc3:
+    if fire_analysis["alert_color"] == "red":
+        st.error(f"**Status:** {fire_analysis['status']}")
+    elif fire_analysis["alert_color"] == "orange":
+        st.warning(f"**Status:** {fire_analysis['status']}")
+    else:
+        st.success(f"**Status:** {fire_analysis['status']}")
+    st.markdown(f"**🤖 AI Action Plan:** {fire_analysis['advisory']}")
 
 st.markdown("---")
 
@@ -272,7 +356,7 @@ for hole in boreholes:
         icon=folium.Icon(color="green", icon="wrench")
     ).add_to(m)
 
-folium.Circle([lat, lon], radius=1000, color="red", fill=True, fill_opacity=0.15).add_to(m)
+folium.Circle([lat, lon], radius=1000, color="red" if fire_analysis["fire_risk_percent"] > 60 else "blue", fill=True, fill_opacity=0.15).add_to(m)
 
 st_folium.st_folium(m, width=1200, height=450)
 
@@ -294,6 +378,7 @@ with col1:
         "Ambient Surface Temp (°C)": weather_data["temp_c"],
         "Barometric Pressure (hPa)": weather_data["pressure_hpa"],
         "Wind Speed (km/h)": weather_data["wind_speed"],
+        "Spontaneous Combustion Risk (%)": fire_analysis["fire_risk_percent"],
         "GEE Status": "CONNECTED ✅" if gee_connected else "AUTH ERROR ❌",
         "GEE Details": gee_msg if not gee_connected else "Earth Engine Service Account Authenticated"
     })
