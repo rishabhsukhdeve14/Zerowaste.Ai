@@ -1,153 +1,1080 @@
+# ============================================================
+# ZERO WASTE SOLUTIONS
+# INDIA METHANE INTELLIGENCE PLATFORM
+#
+# Sentinel-5P/TROPOMI CH4
+# Sentinel-2 Surface Intelligence
+# ERA5 Wind Transport Context
+#
+# Features:
+# - Latest available satellite observation
+# - CH4 quality filtering
+# - Recent median CH4
+# - Historical baseline
+# - CH4 anomaly
+# - Z-score
+# - Temporal persistence
+# - Spatial contrast
+# - Wind speed/direction
+# - Evidence score
+# - Confidence score
+# - India-wide landfill ranking
+# - Interactive methane map
+# - Sentinel-2 deep scan
+# - CSV export
+# - Auto refresh
+#
+# IMPORTANT:
+# This is a methane screening/source-attribution system.
+# It does NOT claim exact tonnes/hour from TROPOMI alone.
+# ============================================================
+
 import json
-import datetime
-import requests
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
+from datetime import datetime, timedelta, timezone
+
 import ee
 import folium
+import numpy as np
+import pandas as pd
 import streamlit as st
-import streamlit_folium as st_folium
 
-st.set_page_config(
-    page_title="Zero Waste Solutions — Multi-Satellite PINN Digital Twin",
-    page_icon="🌍",
-    layout="wide"
-)
+from folium import plugins
+from streamlit_folium import st_folium
+from streamlit_autorefresh import st_autorefresh
 
-# Cyberpunk UI Styling
-st.markdown("""
-<style>
-    .stApp { background: #030712; color: #f8fafc; font-family: 'Inter', sans-serif; }
-    .hero-title { font-size: 1.9rem; font-weight: 900; background: linear-gradient(90deg, #38bdf8, #f43f5e, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .glass-card { background: rgba(17, 24, 39, 0.75); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-</style>
-""", unsafe_allow_html=True)
+
+# ============================================================
+# CONFIG
+# ============================================================
 
 PROJECT_ID = "stalwart-fx-490910-e3"
 
+S5P_DATASET = "COPERNICUS/S5P/OFFL/L3_CH4"
+S2_DATASET = "COPERNICUS/S2_SR_HARMONIZED"
+S2_CLOUD_DATASET = "COPERNICUS/S2_CLOUD_PROBABILITY"
+ERA5_DATASET = "ECMWF/ERA5/HOURLY"
+
+CH4_BAND = (
+    "CH4_column_volume_mixing_ratio_dry_air_bias_corrected"
+)
+
+CH4_UNCERTAINTY = (
+    "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+)
+
+S5P_SCALE = 1113
+S2_SCALE = 10
+ERA5_SCALE = 27830
+
+INDIA_MIN_LAT = 6
+INDIA_MAX_LAT = 38
+INDIA_MIN_LON = 68
+INDIA_MAX_LON = 98
+
+DEFAULT_REFRESH = 15
+
+
+# ============================================================
+# STREAMLIT
+# ============================================================
+
+st.set_page_config(
+    page_title="Zero Waste Solutions — Methane Intelligence",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ============================================================
+# CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .stApp {
+        background:
+        radial-gradient(
+            circle at 90% 0%,
+            rgba(14,165,233,0.12),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 10% 20%,
+            rgba(16,185,129,0.08),
+            transparent 25%
+        ),
+        #020617;
+
+        color:#f8fafc;
+    }
+
+    .hero {
+        font-size:2.25rem;
+        font-weight:950;
+        letter-spacing:-0.8px;
+
+        background:
+        linear-gradient(
+            90deg,
+            #38bdf8,
+            #22c55e,
+            #f43f5e
+        );
+
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+    }
+
+    .subtitle {
+        color:#94a3b8;
+        margin-bottom:18px;
+    }
+
+    .card {
+        background:rgba(15,23,42,0.86);
+        border:1px solid rgba(148,163,184,0.13);
+        border-radius:16px;
+        padding:16px;
+        box-shadow:0 10px 35px rgba(0,0,0,0.25);
+    }
+
+    .info {
+        background:rgba(14,116,144,0.14);
+        border-left:5px solid #38bdf8;
+        border-radius:9px;
+        padding:14px;
+        margin:12px 0;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# EARTH ENGINE INITIALIZATION
+# ============================================================
+
 @st.cache_resource
-def init_ee():
+def init_earth_engine():
+
     try:
+
         if "GCP_SERVICE_ACCOUNT" in st.secrets:
-            key_dict = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
-            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
-            credentials = ee.ServiceAccountCredentials(key_dict["client_email"], key_data=json.dumps(key_dict))
-            ee.Initialize(credentials, project=PROJECT_ID)
-        else:
-            ee.Initialize(project=PROJECT_ID)
-        return True
-    except Exception:
-        return False
 
-ee_active = init_ee()
+            key = dict(
+                st.secrets["GCP_SERVICE_ACCOUNT"]
+            )
 
-# Landfill Database with NGT Fined Sites & Precise Metrics
-INDIA_LANDFILLS_EXT = {
-    "Ghazipur (Delhi)": {"lat": 28.6231, "lon": 77.3288, "height_m": 65.0, "mass_mt": 14.0},
-    "Bhalswa (Delhi)": {"lat": 28.7410, "lon": 77.1517, "height_m": 62.0, "mass_mt": 8.0},
-    "Okhla (Delhi)": {"lat": 28.5303, "lon": 77.2789, "height_m": 55.0, "mass_mt": 6.0},
-    "Deonar (Mumbai)": {"lat": 19.0573, "lon": 72.9304, "height_m": 38.0, "mass_mt": 16.0},
-    "Mulund (Mumbai)": {"lat": 19.1678, "lon": 72.9567, "height_m": 30.0, "mass_mt": 7.0},
-    "Pirana (Ahmedabad)": {"lat": 22.9831, "lon": 72.5802, "height_m": 50.0, "mass_mt": 10.0},
-    "Jawaharnagar (Hyderabad)": {"lat": 17.5147, "lon": 78.5852, "height_m": 45.0, "mass_mt": 12.0},
-    "Kodungaiyur (Chennai)": {"lat": 13.1360, "lon": 80.2640, "height_m": 35.0, "mass_mt": 11.0},
-    "Durg-Rajnandgaon Yard (CG)": {"lat": 21.1904, "lon": 81.2848, "height_m": 22.0, "mass_mt": 2.5}
-}
+            if "private_key" in key:
 
-st.sidebar.markdown("### 🛰️ Multi-Satellite PINN Controls")
-selected_site = st.sidebar.selectbox("Select Target Landfill", list(INDIA_LANDFILLS_EXT.keys()))
-site = INDIA_LANDFILLS_EXT[selected_site]
+                key["private_key"] = (
+                    key["private_key"]
+                    .replace("\\n", "\n")
+                )
 
-st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — PINN SATELLITE TELEMETRY ENGINE</div>', unsafe_allow_html=True)
-st.markdown(f"**Active Monitoring Node:** `{selected_site}` | **Lat:** `{site['lat']}` | **Lon:** `{site['lon']}`")
+            credentials = ee.ServiceAccountCredentials(
+                key["client_email"],
+                key_data=json.dumps(key),
+            )
+
+            ee.Initialize(
+                credentials=credentials,
+                project=PROJECT_ID,
+            )
+
+            return True, "Service account connected."
+
+        ee.Initialize(
+            project=PROJECT_ID
+        )
+
+        return True, "Earth Engine connected."
+
+    except Exception as e:
+
+        return False, str(e)
+
+
+EE_ACTIVE, EE_MESSAGE = (
+    init_earth_engine()
+)
+
+if not EE_ACTIVE:
+
+    st.error(
+        "Earth Engine connection failed:\n\n"
+        + EE_MESSAGE
+    )
+
+    st.stop()
+
+
+# ============================================================
+# AUTO REFRESH
+# ============================================================
+
+refresh = st.sidebar.slider(
+    "Automatic refresh",
+    5,
+    60,
+    DEFAULT_REFRESH,
+    5,
+)
+
+st_autorefresh(
+    interval=refresh * 60 * 1000,
+    key="methane_refresh",
+)
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="hero">'
+    'ZERO WASTE SOLUTIONS — METHANE INTELLIGENCE'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'India-wide methane screening + landfill intelligence'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+st.success(
+    f"🛰️ {EE_MESSAGE} | Project: {PROJECT_ID}"
+)
+
+
+# ============================================================
+# INDIA GEOMETRY
+# ============================================================
+
+@st.cache_resource
+def get_india():
+
+    return (
+        ee.FeatureCollection(
+            "FAO/GAUL/2015/level0"
+        )
+        .filter(
+            ee.Filter.eq(
+                "ADM0_NAME",
+                "India",
+            )
+        )
+        .geometry()
+    )
+
+
+INDIA = get_india()
+
+
+# ============================================================
+# LANDFILL DATABASE
+# ============================================================
+
+def load_landfills():
+
+    st.sidebar.markdown(
+        "## 📍 Landfill Database"
+    )
+
+    uploaded = st.sidebar.file_uploader(
+        "Upload India landfill CSV",
+        type=["csv"],
+    )
+
+    if uploaded:
+
+        df = pd.read_csv(
+            uploaded
+        )
+
+        source = "USER DATABASE"
+
+    else:
+
+        # Demo fallback.
+        # Upload your complete landfill CSV.
+        df = pd.DataFrame(
+            [
+                [
+                    "Ghazipur",
+                    "Delhi",
+                    "Delhi",
+                    28.6231,
+                    77.3288,
+                ],
+                [
+                    "Bhalswa",
+                    "Delhi",
+                    "Delhi",
+                    28.7410,
+                    77.1517,
+                ],
+                [
+                    "Okhla",
+                    "Delhi",
+                    "Delhi",
+                    28.5303,
+                    77.2789,
+                ],
+                [
+                    "Deonar",
+                    "Maharashtra",
+                    "Mumbai",
+                    19.0573,
+                    72.9304,
+                ],
+                [
+                    "Mulund",
+                    "Maharashtra",
+                    "Mumbai",
+                    19.1678,
+                    72.9567,
+                ],
+                [
+                    "Pirana",
+                    "Gujarat",
+                    "Ahmedabad",
+                    22.9831,
+                    72.5802,
+                ],
+                [
+                    "Jawaharnagar",
+                    "Telangana",
+                    "Hyderabad",
+                    17.5147,
+                    78.5852,
+                ],
+                [
+                    "Kodungaiyur",
+                    "Tamil Nadu",
+                    "Chennai",
+                    13.1360,
+                    80.2640,
+                ],
+                [
+                    "Durg-Rajnandgaon",
+                    "Chhattisgarh",
+                    "Durg",
+                    21.1904,
+                    81.2848,
+                ],
+            ],
+            columns=[
+                "name",
+                "state",
+                "city",
+                "lat",
+                "lon",
+            ],
+        )
+
+        source = "DEMO DATABASE"
+
+    df.columns = [
+        str(c).strip().lower()
+        for c in df.columns
+    ]
+
+    required = {
+        "name",
+        "lat",
+        "lon",
+    }
+
+    missing = (
+        required
+        - set(df.columns)
+    )
+
+    if missing:
+
+        st.error(
+            "Missing columns: "
+            + ", ".join(
+                sorted(missing)
+            )
+        )
+
+        st.stop()
+
+    df["name"] = (
+        df["name"]
+        .astype(str)
+        .str.strip()
+    )
+
+    df["lat"] = pd.to_numeric(
+        df["lat"],
+        errors="coerce",
+    )
+
+    df["lon"] = pd.to_numeric(
+        df["lon"],
+        errors="coerce",
+    )
+
+    df = df.dropna(
+        subset=[
+            "lat",
+            "lon",
+        ]
+    )
+
+    df = df[
+        (df["lat"] >= INDIA_MIN_LAT)
+        & (df["lat"] <= INDIA_MAX_LAT)
+        & (df["lon"] >= INDIA_MIN_LON)
+        & (df["lon"] <= INDIA_MAX_LON)
+    ]
+
+    df = df.drop_duplicates(
+        subset=[
+            "lat",
+            "lon",
+        ]
+    ).reset_index(
+        drop=True
+    )
+
+    df["site_id"] = (
+        np.arange(
+            len(df)
+        ).astype(str)
+    )
+
+    return df, source
+
+
+landfills, database_source = (
+    load_landfills()
+)
+
+
+# ============================================================
+# CONTROLS
+# ============================================================
+
+st.sidebar.markdown(
+    "## 🧠 Detection Engine"
+)
+
+recent_days = st.sidebar.slider(
+    "Recent CH4 window",
+    2,
+    14,
+    7,
+)
+
+baseline_days = st.sidebar.slider(
+    "Historical baseline",
+    30,
+    180,
+    90,
+)
+
+buffer_km = st.sidebar.slider(
+    "Landfill radius",
+    1,
+    5,
+    2,
+)
+
+max_uncertainty = st.sidebar.slider(
+    "Max CH4 uncertainty",
+    1.0,
+    10.0,
+    5.0,
+    0.5,
+)
+
+min_qa = st.sidebar.slider(
+    "Minimum QA",
+    0.40,
+    1.00,
+    0.50,
+    0.05,
+)
+
+st.sidebar.markdown(
+    "## 🛰️ Sentinel-2"
+)
+
+s2_days = st.sidebar.slider(
+    "S2 lookback",
+    10,
+    90,
+    30,
+)
+
+cloud_probability = st.sidebar.slider(
+    "Max cloud probability",
+    5,
+    50,
+    20,
+)
+
+show_alerts = st.sidebar.checkbox(
+    "Only HIGH/ELEVATED",
+    False,
+)
+
+
+# ============================================================
+# LATEST SATELLITE OBSERVATION
+# ============================================================
 
 @st.cache_data(ttl=600)
-def get_live_satellite_data(lat, lon):
-    if not ee_active:
-        return {"ch4": 1882.4, "lst_c": 38.5, "pressure": 1008.0, "wind": 5.0}
-    try:
-        pt = ee.Geometry.Point([lon, lat])
-        s5p = (ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4')
-               .select('CH4_column_volume_mixing_ratio_dry_air')
-               .filterBounds(pt)
-               .filterDate('2026-05-01', '2026-08-11')
-               .mean())
-        
-        ch4_obj = s5p.reduceRegion(reducer=ee.Reducer.mean(), geometry=pt, scale=1100)
-        ch4 = ch4_obj.get('CH4_column_volume_mixing_ratio_dry_air').getInfo()
-        
-        res = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,surface_pressure,wind_speed_10m").json()
-        curr = res.get("current", {})
-        
-        return {
-            "ch4": round(ch4, 1) if ch4 else 1885.0,
-            "lst_c": curr.get("temperature_2m", 34.0) + 6.2,
-            "pressure": curr.get("surface_pressure", 1008.0),
-            "wind": curr.get("wind_speed_10m", 5.0)
+def latest_s5p():
+
+    collection = (
+        ee.ImageCollection(
+            S5P_DATASET
+        )
+        .filterBounds(
+            INDIA
+        )
+        .select(
+            CH4_BAND
+        )
+        .sort(
+            "system:time_start",
+            False,
+        )
+    )
+
+    if collection.size().getInfo() == 0:
+
+        return None
+
+    image = ee.Image(
+        collection.first()
+    )
+
+    ts = image.get(
+        "system:time_start"
+    ).getInfo()
+
+    if ts is None:
+
+        return None
+
+    return datetime.fromtimestamp(
+        ts / 1000,
+        tz=timezone.utc,
+    )
+
+
+latest = latest_s5p()
+
+if latest is None:
+
+    st.error(
+        "No Sentinel-5P CH4 observation found."
+    )
+
+    st.stop()
+
+
+latest_text = latest.strftime(
+    "%Y-%m-%d %H:%M UTC"
+)
+
+
+# ============================================================
+# DATE WINDOWS
+# ============================================================
+
+recent_start_dt = (
+    latest
+    - timedelta(
+        days=recent_days
+    )
+)
+
+recent_end_dt = (
+    latest
+    + timedelta(
+        days=1
+    )
+)
+
+baseline_start_dt = (
+    recent_start_dt
+    - timedelta(
+        days=baseline_days
+    )
+)
+
+
+def date_str(dt):
+
+    return dt.strftime(
+        "%Y-%m-%d"
+    )
+
+
+recent_start = date_str(
+    recent_start_dt
+)
+
+recent_end = date_str(
+    recent_end_dt
+)
+
+baseline_start = date_str(
+    baseline_start_dt
+)
+
+baseline_end = date_str(
+    recent_start_dt
+)
+
+
+# ============================================================
+# QUALITY FILTER
+# ============================================================
+
+@st.cache_resource(ttl=600)
+def build_collections():
+
+    def quality_mask(image):
+
+        qa = image.select(
+            "qa_value"
+        )
+
+        uncertainty = image.select(
+            CH4_UNCERTAINTY
+        )
+
+        mask = (
+            qa.gte(
+                min_qa
+            )
+            .And(
+                uncertainty.lte(
+                    max_uncertainty
+                )
+            )
+        )
+
+        return image.updateMask(
+            mask
+        )
+
+    recent = (
+        ee.ImageCollection(
+            S5P_DATASET
+        )
+        .filterDate(
+            recent_start,
+            recent_end,
+        )
+        .filterBounds(
+            INDIA
+        )
+        .select(
+            [
+                CH4_BAND,
+                CH4_UNCERTAINTY,
+                "qa_value",
+            ]
+        )
+        .map(
+            quality_mask
+        )
+    )
+
+    baseline = (
+        ee.ImageCollection(
+            S5P_DATASET
+        )
+        .filterDate(
+            baseline_start,
+            baseline_end,
+        )
+        .filterBounds(
+            INDIA
+        )
+        .select(
+            [
+                CH4_BAND,
+                CH4_UNCERTAINTY,
+                "qa_value",
+            ]
+        )
+        .map(
+            quality_mask
+        )
+    )
+
+    return recent, baseline
+
+
+recent_collection, baseline_collection = (
+    build_collections()
+)
+
+
+# ============================================================
+# CH4 PRODUCTS
+# ============================================================
+
+@st.cache_resource(ttl=600)
+def build_products():
+
+    recent_median = (
+        recent_collection
+        .select(
+            CH4_BAND
+        )
+        .median()
+        .clip(
+            INDIA
+        )
+        .rename(
+            "recent"
+        )
+    )
+
+    recent_mean = (
+        recent_collection
+        .select(
+            CH4_BAND
+        )
+        .mean()
+        .clip(
+            INDIA
+        )
+        .rename(
+            "recent_mean"
+        )
+    )
+
+    baseline_median = (
+        baseline_collection
+        .select(
+            CH4_BAND
+        )
+        .median()
+        .clip(
+            INDIA
+        )
+        .rename(
+            "baseline"
+        )
+    )
+
+    baseline_std = (
+        baseline_collection
+        .select(
+            CH4_BAND
+        )
+        .reduce(
+            ee.Reducer.stdDev()
+        )
+        .clip(
+            INDIA
+        )
+        .rename(
+            "baseline_std"
+        )
+    )
+
+    anomaly = (
+        recent_median
+        .subtract(
+            baseline_median
+        )
+        .rename(
+            "anomaly"
+        )
+    )
+
+    zscore = (
+        anomaly
+        .divide(
+            baseline_std.max(
+                ee.Image.constant(
+                    2
+                )
+            )
+        )
+        .rename(
+            "zscore"
+        )
+    )
+
+    return (
+        recent_median,
+        recent_mean,
+        baseline_median,
+        baseline_std,
+        anomaly,
+        zscore,
+    )
+
+
+(
+    recent_median,
+    recent_mean,
+    baseline_median,
+    baseline_std,
+    anomaly,
+    zscore,
+) = build_products()
+
+
+# ============================================================
+# PERSISTENCE
+# ============================================================
+
+@st.cache_resource(ttl=600)
+def build_persistence():
+
+    def flag(image):
+
+        return (
+            image
+            .select(
+                CH4_BAND
+            )
+            .gt(
+                baseline_median.add(
+                    20
+                )
+            )
+            .rename(
+                "persistent"
+            )
+        )
+
+    return (
+        recent_collection
+        .map(
+            flag
+        )
+        .sum()
+        .rename(
+            "persistence"
+        )
+        .clip(
+            INDIA
+        )
+    )
+
+
+persistence = (
+    build_persistence()
+)
+
+
+# ============================================================
+# ERA5 WIND
+# ============================================================
+
+@st.cache_resource(ttl=1800)
+def get_wind():
+
+    start = (
+        latest
+        - timedelta(
+            hours=12
+        )
+    )
+
+    end = (
+        latest
+        + timedelta(
+            hours=12
+        )
+    )
+
+    collection = (
+        ee.ImageCollection(
+            ERA5_DATASET
+        )
+        .filterDate(
+            start.strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ),
+            end.strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            ),
+        )
+        .select(
+            [
+                "u_component_of_wind_10m",
+                "v_component_of_wind_10m",
+            ]
+        )
+        .sort(
+            "system:time_start",
+            False,
+        )
+    )
+
+    return ee.Image(
+        collection.first()
+    )
+
+
+wind_image = get_wind()
+
+
+# ============================================================
+# EE LANDFILL FC
+# ============================================================
+
+def make_fc(df):
+
+    features = []
+
+    for _, row in df.iterrows():
+
+        props = {
+            "site_id": str(
+                row["site_id"]
+            ),
+            "name": str(
+                row["name"]
+            ),
         }
-    except Exception:
-        return {"ch4": 1878.2, "lst_c": 39.1, "pressure": 1009.5, "wind": 4.8}
 
-data = get_live_satellite_data(site["lat"], site["lon"])
+        if "state" in df.columns:
 
-class PINNLandfillPhysics:
-    @staticmethod
-    def solve_pinn_equations(ch4, lst, pressure, wind, height):
-        k_waste = 0.25 
-        core_temp_est = lst + (height * 0.35)
-        heat_flux = k_waste * ((core_temp_est - lst) / height)
-        
-        diffusion_coeff_eff = 1.2e-6 
-        oxygen_ingress_risk = (diffusion_coeff_eff * wind) / (height * 0.1)
-        
-        risk_score = min(round((0.4 * (core_temp_est / 60.0)) + (0.4 * (ch4 / 2000.0)) + (0.2 * oxygen_ingress_risk * 10), 1) * 100, 99.4)
-        
-        if risk_score > 70:
-            status = "CRITICAL SPONTANEOUS COMBUSTION HAZARD"
-            action = "⚠️ Fick's Law Violation: Clay cap micro-fissures detected. Increase vacuum extraction rate in degassing wells immediately."
-            color = "#ef4444"
-        elif risk_score > 40:
-            status = "THERMAL ANOMALY WARNING"
-            action = "⚡ Fourier Heat Flux elevated. Activate thermal dissipation vents and moisture-spraying."
-            color = "#f59e0b"
-        else:
-            status = "STABLE DEGRADATION"
-            action = "✅ Passive degassing & clay capping integrity within safe operational limits."
-            color = "#10b981"
-            
-        return {
-            "core_temp": round(core_temp_est, 1),
-            "heat_flux": round(heat_flux, 4),
-            "diffusion_risk": round(oxygen_ingress_risk, 5),
-            "risk_score": risk_score,
-            "status": status,
-            "action": action,
-            "color": color
-        }
+            props["state"] = str(
+                row.get(
+                    "state",
+                    ""
+                )
+            )
 
-pinn = PINNLandfillPhysics.solve_pinn_equations(data["ch4"], data["lst_c"], data["pressure"], data["wind"], site["height_m"])
+        if "city" in df.columns:
 
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.markdown(f'<div class="glass-card"><b>Sentinel-5P CH₄</b><br><font size="5" color="#fda4af">{data["ch4"]} ppb</font></div>', unsafe_allow_html=True)
-c2.markdown(f'<div class="glass-card"><b>ECOSTRESS LST</b><br><font size="5" color="#fed7aa">{data["lst_c"]} °C</font></div>', unsafe_allow_html=True)
-c3.markdown(f'<div class="glass-card"><b>Fourier Heat Flux</b><br><font size="5" color="#a5f3fc">{pinn["heat_flux"]} W/m²</font></div>', unsafe_allow_html=True)
-c4.markdown(f'<div class="glass-card"><b>Fick Diffusion (O₂)</b><br><font size="5" color="#a7f3d0">{pinn["diffusion_risk"]}</font></div>', unsafe_allow_html=True)
-c5.markdown(f'<div class="glass-card"><b>PINN Risk Index</b><br><font size="5" color="{pinn["color"]}">{pinn["risk_score"]}%</font></div>', unsafe_allow_html=True)
+            props["city"] = str(
+                row.get(
+                    "city",
+                    ""
+                )
+            )
 
-st.markdown("<br>", unsafe_allow_html=True)
+        point = ee.Geometry.Point(
+            [
+                float(row["lon"]),
+                float(row["lat"]),
+            ]
+        )
 
-m = folium.Map(location=[site["lat"], site["lon"]], zoom_start=14, tiles="CartoDB dark_matter")
-folium.CircleMarker(
-    location=[site["lat"], site["lon"]], radius=16,
-    color=pinn["color"], fill=True, fill_color=pinn["color"], fill_opacity=0.9,
-    popup=f"<b>{selected_site}</b><br>PINN Status: {pinn['status']}"
-).add_to(m)
-st_folium.st_folium(m, width=1300, height=380)
+        features.append(
+            ee.Feature(
+                point,
+                props,
+            )
+        )
 
-st.markdown(f"""
-<div style="background: rgba(15, 23, 42, 0.9); border-left: 6px solid {pinn['color']}; padding: 16px; border-radius: 8px; margin-top: 15px;">
-    <h4 style="color: {pinn['color']}; margin: 0 0 6px 0;">🤖 PINN INVERSION & MITIGATION PROTOCOL: {pinn['status']}</h4>
-    <p style="margin: 0; color: #cbd5e1; font-size: 0.95rem;">{pinn['action']}</p>
-</div>
-""", unsafe_allow_html=True)
+    return ee.FeatureCollection(
+        features
+    )
+
+
+# ============================================================
+# NATIONAL ANALYSIS
+# ============================================================
+
+@st.cache_data(ttl=1800)
+def analyze_sites(
+    dataframe_json,
+    radius,
+):
+
+    df = pd.read_json(
+        dataframe_json
+    )
+
+    fc = make_fc(
+        df
+    )
+
+    inner = fc.map(
+        lambda f: f.buffer(
+            radius * 1000
+        )
+    )
+
+    outer = fc.map(
+        lambda f: f.buffer(
+            radius * 3000
+        )
+    )
+
+    # --------------------------------------------------------
+    # Recent CH4
+    # --------------------------------------------------------
+
+    recent_stats = (
+        recent_median
+        .reduceRegions(
+            collection=inner,
+            reducer=ee.Reducer.mean(),
+            scale=S5P_SCALE,
+            tileScale=8,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Baseline
+    # --------------------------------------------------------
+
+    baseline_stats = (
+        baseline_median
+        .reduceRegions(
+            collection=inner,
+            reducer=ee.Reducer.mean(),
+            scale=S5P_SCALE,
+            tileScale=8,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Anomaly
+    # --------------------------------------------------------
+
+    anomaly_stats = (
+        anomaly
+        .reduceRegions(
+            collection=inner,
+            reducer=ee.Reducer.mean(),
+            scale=S5P_SCALE,
+            tileScale=8,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Z-score
+    # --------------------------------------------------------
+
+    z_stats = (
+        zscore
+        .reduceRegions(
+            collection=inner,
+            reducer=ee.Reducer.mean(),
+            scale=S5P_SCALE,
+            tileScale=8,
+        )
+    )
+
+    # ----------------
