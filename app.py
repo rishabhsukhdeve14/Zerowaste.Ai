@@ -4,9 +4,6 @@ import time
 import requests
 import numpy as np
 import pandas as pd
-from scipy.linalg import svd, pinv
-import torch
-import torch.nn as nn
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -38,7 +35,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    /* Gradient Title */
     .hero-title {
         font-family: 'Orbitron', sans-serif;
         font-size: 2.1rem;
@@ -56,14 +52,6 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* Glowing KPI Glass Cards */
-    .kpi-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 20px;
-    }
-
     .glass-card {
         background: rgba(17, 24, 39, 0.7);
         backdrop-filter: blur(14px);
@@ -74,7 +62,7 @@ st.markdown("""
         position: relative;
         overflow: hidden;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-        transition: transform 0.3s ease, border-color 0.3s ease;
+        transition: transform 0.3s ease;
     }
     .glass-card:hover {
         transform: translateY(-4px);
@@ -105,7 +93,6 @@ st.markdown("""
         color: #64748b;
     }
 
-    /* Pulse Badges */
     .badge-live {
         display: inline-flex;
         align-items: center;
@@ -117,7 +104,6 @@ st.markdown("""
         border-radius: 9999px;
         font-size: 0.8rem;
         font-weight: 700;
-        letter-spacing: 0.05em;
         box-shadow: 0 0 12px rgba(52, 211, 153, 0.25);
     }
     .pulse-dot {
@@ -151,13 +137,12 @@ def init_earth_engine():
                 key_data=json.dumps(key_dict)
             )
             ee.Initialize(credentials, project=PROJECT_ID)
-            return True, "Earth Engine Cloud Engine Authenticated"
+            return True, "Authenticated"
         else:
             ee.Initialize(project=PROJECT_ID)
-            return True, f"Earth Engine Initialized ({PROJECT_ID})"
+            return True, "Initialized"
     except Exception as e:
-        error_msg = str(e).split("http")[0] if "http" in str(e) else str(e)
-        return False, f"GEE Auth Error: {error_msg}"
+        return False, str(e)
 
 gee_connected, gee_msg = init_earth_engine()
 
@@ -184,11 +169,10 @@ def fetch_live_weather(lat, lon):
             "temp_c": curr.get("temperature_2m", 31.5),
             "humidity": curr.get("relative_humidity_2m", 58.0),
             "pressure_hpa": curr.get("surface_pressure", 1008.2),
-            "wind_speed": curr.get("wind_speed_10m", 6.2),
-            "timestamp": curr.get("time", datetime.datetime.now().strftime("%H:%M:%S"))
+            "wind_speed": curr.get("wind_speed_10m", 6.2)
         }
     except Exception:
-        return {"temp_c": 32.0, "humidity": 55.0, "pressure_hpa": 1010.0, "wind_speed": 5.5, "timestamp": "Realtime Fallback"}
+        return {"temp_c": 32.0, "humidity": 55.0, "pressure_hpa": 1010.0, "wind_speed": 5.5}
 
 def fetch_gee_sentinel5p_methane(lat, lon):
     if not gee_connected:
@@ -254,7 +238,7 @@ class LandfillFirePhysics:
         }
 
 # -----------------------------------------------------------------------------
-# 5. SIDEBAR CONTROLS & LIVE STREAMING SWITCH
+# 5. SIDEBAR CONTROLS
 # -----------------------------------------------------------------------------
 st.sidebar.markdown("### 🎛️ Digital Twin Controls")
 selected_site = st.sidebar.selectbox("🎯 Target Landfill", list(INDIA_LANDFILLS.keys()), index=0)
@@ -263,31 +247,21 @@ site_info = INDIA_LANDFILLS[selected_site]
 auto_stream = st.sidebar.toggle("⚡ Enable Real-time Streaming", value=True)
 refresh_rate = st.sidebar.slider("📡 Live Polling Interval (sec)", min_value=3, max_value=30, value=6)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🧠 PINN & Dynamics")
-run_sindy = st.sidebar.checkbox("SINDy Sparse Equation Discovery", value=True)
-run_havok = st.sidebar.checkbox("HAVOK Chaotic Driver Embedding", value=True)
-
 # -----------------------------------------------------------------------------
-# 6. HEADER SECTION
+# 6. HEADER
 # -----------------------------------------------------------------------------
 col_h1, col_h2 = st.columns([3, 1.2])
-
 with col_h1:
     st.markdown('<div class="hero-title">ZERO WASTE AI — THERMAL DIGITAL TWIN</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="hero-subtitle">Physics-Informed Real-Time Spontaneous Combustion & Sentinel-5P Methane Telemetry</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="hero-subtitle">Physics-Informed Real-Time Spontaneous Combustion & Sentinel-5P Methane Telemetry</div>', unsafe_allow_html=True)
 with col_h2:
-    if gee_connected:
-        st.markdown('''
-        <div style="text-align: right; padding-top: 5px;">
-            <span class="badge-live"><span class="pulse-dot"></span> LIVE SATELLITE STREAM</span>
-        </div>''', unsafe_allow_html=True)
-    else:
-        st.error("GEE Offline")
+    st.markdown('''
+    <div style="text-align: right; padding-top: 5px;">
+        <span class="badge-live"><span class="pulse-dot"></span> LIVE SATELLITE STREAM</span>
+    </div>''', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 7. TELEMETRY & PHYSICS COMPUTATIONS
+# 7. TELEMETRY & STATE MANAGEMENT (NO RANDOM NOISE)
 # -----------------------------------------------------------------------------
 weather = fetch_live_weather(site_info["lat"], site_info["lon"])
 ch4_val = fetch_gee_sentinel5p_methane(site_info["lat"], site_info["lon"])
@@ -295,8 +269,27 @@ physics = LandfillFirePhysics.calculate_fire_risk(
     weather["temp_c"], ch4_val, weather["pressure_hpa"], weather["wind_speed"], site_info["height_m"]
 )
 
+# Initialize Session State Buffer for Real History Tracking
+if "history_time" not in st.session_state:
+    st.session_state.history_time = []
+    st.session_state.history_ch4 = []
+    st.session_state.history_temp = []
+
+current_time_str = datetime.datetime.now().strftime("%H:%M:%S")
+# Append only if new data arrives to avoid duplicate timestamps
+if not st.session_state.history_time or st.session_state.history_time[-1] != current_time_str:
+    st.session_state.history_time.append(current_time_str)
+    st.session_state.history_ch4.append(ch4_val)
+    st.session_state.history_temp.append(weather["temp_c"])
+
+    # Keep last 15 points
+    if len(st.session_state.history_time) > 15:
+        st.session_state.history_time.pop(0)
+        st.session_state.history_ch4.pop(0)
+        st.session_state.history_temp.pop(0)
+
 # -----------------------------------------------------------------------------
-# 8. VIBRANT COLORFUL KPI CARDS
+# 8. VIBRANT KPI CARDS
 # -----------------------------------------------------------------------------
 k1, k2, k3, k4, k5 = st.columns(5)
 
@@ -306,8 +299,7 @@ with k1:
         <div class="card-label">Sentinel-5P CH₄</div>
         <div class="card-value" style="color: #fda4af;">{ch4_val} <span style="font-size: 0.8rem; color:#f43f5e;">ppb</span></div>
         <div class="card-subtext">Column Mixing Ratio</div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 with k2:
     st.markdown(f"""
@@ -315,8 +307,7 @@ with k2:
         <div class="card-label">Surface Temp</div>
         <div class="card-value" style="color: #fed7aa;">{weather['temp_c']}° <span style="font-size: 0.8rem; color:#f97316;">C</span></div>
         <div class="card-subtext">Core Est: {physics['internal_temp_est_c']}°C</div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 with k3:
     st.markdown(f"""
@@ -324,8 +315,7 @@ with k3:
         <div class="card-label">Barometric Pressure</div>
         <div class="card-value" style="color: #a5f3fc;">{weather['pressure_hpa']} <span style="font-size: 0.8rem; color:#06b6d4;">hPa</span></div>
         <div class="card-subtext">Buoyancy: {physics['gas_buoyancy_factor']}x</div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 with k4:
     st.markdown(f"""
@@ -333,8 +323,7 @@ with k4:
         <div class="card-label">Wind Velocity</div>
         <div class="card-value" style="color: #a7f3d0;">{weather['wind_speed']} <span style="font-size: 0.8rem; color:#10b981;">km/h</span></div>
         <div class="card-subtext">O₂ Supply Rate</div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 with k5:
     st.markdown(f"""
@@ -342,23 +331,21 @@ with k5:
         <div class="card-label">Combustion Risk</div>
         <div class="card-value" style="color: {physics['color']};">{physics['fire_risk_percent']}%</div>
         <div class="card-subtext">{physics['status']}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 9. INTERACTIVE REAL-TIME PLOTLY CHARTS & RADIAL GAUGE
+# 9. INTERACTIVE PLOTLY CHARTS & RADIAL GAUGE
 # -----------------------------------------------------------------------------
 c_left, c_right = st.columns([1.1, 1.9])
 
 with c_left:
     st.markdown("#### 🎯 Real-Time Thermal Runaway Gauge")
     fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
+        mode="gauge+number",
         value=physics["fire_risk_percent"],
         domain={'x': [0, 1], 'y': [0, 1]},
-        delta={'reference': 50, 'increasing': {'color': "#f43f5e"}},
         number={'suffix': "%", 'font': {'color': '#ffffff', 'family': 'Orbitron', 'size': 32}},
         gauge={
             'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
@@ -370,52 +357,29 @@ with c_left:
                 {'range': [0, 45], 'color': 'rgba(16, 185, 129, 0.2)'},
                 {'range': [45, 70], 'color': 'rgba(245, 158, 11, 0.25)'},
                 {'range': [70, 100], 'color': 'rgba(239, 68, 68, 0.35)'}
-            ],
-            'threshold': {
-                'line': {'color': "#ef4444", 'width': 4},
-                'thickness': 0.8,
-                'value': 75
-            }
+            ]
         }
     ))
-    fig_gauge.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        height=260,
-        margin=dict(l=20, r=20, t=20, b=20)
-    )
+    fig_gauge.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig_gauge, use_container_width=True)
 
 with c_right:
-    st.markdown("#### 📈 Live Gas Plume vs. Fourier Heat Flux Trend")
+    st.markdown("#### 📈 Live Gas Plume vs. Temperature Trend (Real Buffer)")
     
-    # Synthetic time-history trend for live visualization
-    time_series = [datetime.datetime.now() - datetime.timedelta(minutes=i*10) for i in range(12)][::-1]
-    ch4_trend = [ch4_val + np.random.uniform(-12, 12) for _ in range(12)]
-    temp_trend = [weather["temp_c"] + np.random.uniform(-0.8, 0.8) for _ in range(12)]
-
     fig_trend = go.Figure()
     fig_trend.add_trace(go.Scatter(
-        x=time_series, y=ch4_trend,
-        name="CH₄ Plume (ppb)",
-        mode='lines+markers',
-        line=dict(color='#f43f5e', width=3, shape='spline'),
-        marker=dict(size=6, color='#fda4af')
+        x=st.session_state.history_time, y=st.session_state.history_ch4,
+        name="CH₄ Plume (ppb)", mode='lines+markers',
+        line=dict(color='#f43f5e', width=3, shape='spline'), marker=dict(size=6, color='#fda4af')
     ))
     fig_trend.add_trace(go.Scatter(
-        x=time_series, y=temp_trend,
-        name="Temp (°C)",
-        yaxis="y2",
-        mode='lines+markers',
-        line=dict(color='#06b6d4', width=3, dash='dot'),
-        marker=dict(size=6, color='#67e8f9')
+        x=st.session_state.history_time, y=st.session_state.history_temp,
+        name="Temp (°C)", yaxis="y2", mode='lines+markers',
+        line=dict(color='#06b6d4', width=3, dash='dot'), marker=dict(size=6, color='#67e8f9')
     ))
     fig_trend.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(15, 23, 42, 0.4)",
-        font=dict(color="#94a3b8"),
-        height=260,
-        margin=dict(l=10, r=10, t=10, b=20),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(15, 23, 42, 0.4)",
+        font=dict(color="#94a3b8"), height=260, margin=dict(l=10, r=10, t=10, b=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         yaxis=dict(title="CH₄ (ppb)", gridcolor="rgba(255,255,255,0.05)"),
         yaxis2=dict(title="Temp (°C)", overlaying="y", side="right", gridcolor="rgba(255,255,255,0.05)")
@@ -423,57 +387,39 @@ with c_right:
     st.plotly_chart(fig_trend, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# 10. REAL-TIME GEOSPATIAL MAP & INTERACTIVE HEAT OVERLAY
+# 10. GEOSPATIAL NETWORK MAP
 # -----------------------------------------------------------------------------
 st.markdown("#### 🗺️ All-India Landfill Digital Twin Geospatial Network")
+map_obj = folium.Map(location=[site_info["lat"], site_info["lon"]], zoom_start=13, tiles="CartoDB dark_matter")
 
-map_obj = folium.Map(
-    location=[site_info["lat"], site_info["lon"]],
-    zoom_start=13,
-    tiles="CartoDB dark_matter"
-)
-
-# Render all landfills
 for site, meta in INDIA_LANDFILLS.items():
     is_active = (site == selected_site)
     folium.CircleMarker(
         location=[meta["lat"], meta["lon"]],
         radius=14 if is_active else 7,
         color="#f43f5e" if is_active else "#38bdf8",
-        fill=True,
-        fill_color="#f43f5e" if is_active else "#0284c7",
-        fill_opacity=0.85,
-        popup=f"<b>{site}</b><br>Height: {meta['height_m']}m<br>Mass: {meta['waste_mass_mt']} MT"
+        fill=True, fill_color="#f43f5e" if is_active else "#0284c7", fill_opacity=0.85,
+        popup=f"<b>{site}</b><br>Height: {meta['height_m']}m"
     ).add_to(map_obj)
 
-# Thermal Hazard Radius around active landfill
 folium.Circle(
-    location=[site_info["lat"], site_info["lon"]],
-    radius=850,
-    color=physics["color"],
-    fill=True,
-    fill_opacity=0.22,
-    popup=f"Thermal Threat Radius: {physics['status']}"
+    location=[site_info["lat"], site_info["lon"]], radius=850,
+    color=physics["color"], fill=True, fill_opacity=0.22
 ).add_to(map_obj)
 
 st_folium.st_folium(map_obj, width=1300, height=420)
 
 # -----------------------------------------------------------------------------
-# 11. AUTOMATED MITIGATION & ACTION PLAN ADVISORY
+# 11. AI ACTION PLAN ADVISORY
 # -----------------------------------------------------------------------------
 st.markdown(f"""
 <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid {physics['color']}; border-left: 6px solid {physics['color']}; border-radius: 12px; padding: 16px 20px; margin-top: 15px;">
-    <div style="font-weight: 700; font-size: 1rem; color: {physics['color']}; margin-bottom: 4px;">
-        🤖 AI FIRE MITIGATION & CONTROL PROTOCOL
-    </div>
-    <div style="color: #e2e8f0; font-size: 0.92rem;">
-        {physics['advisory']}
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    <div style="font-weight: 700; font-size: 1rem; color: {physics['color']}; margin-bottom: 4px;">🤖 AI FIRE MITIGATION & CONTROL PROTOCOL</div>
+    <div style="color: #e2e8f0; font-size: 0.92rem;">{physics['advisory']}</div>
+</div>""", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 12. STREAMING AUTO-REFRESH TRIGGER
+# 12. STREAMING TRIGGER
 # -----------------------------------------------------------------------------
 if auto_stream:
     time.sleep(refresh_rate)
