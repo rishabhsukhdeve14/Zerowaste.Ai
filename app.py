@@ -25,6 +25,11 @@ CH4_UNCERTAINTY = "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
 SCALE = 1113.2
 
 
+APP_VERSION = "2026.08.11-fixed-results-v2"
+if st.session_state.get("app_version") != APP_VERSION:
+    st.session_state["app_version"] = APP_VERSION
+    st.session_state.pop("methane_results", None)
+
 # ============================================================
 # PAGE
 # ============================================================
@@ -869,7 +874,7 @@ if run_scan:
         final = pd.concat(
             results,
             ignore_index=True,
-        )
+        ).copy()
 
         st.session_state[
             "methane_results"
@@ -895,42 +900,14 @@ if run_scan:
 
 
 # ============================================================
-# DISPLAY RESULTS
+# ============================================================
+# DISPLAY RESULTS - ROBUST / TYPE-SAFE
 # ============================================================
 
-if (
-    "methane_results"
-    in st.session_state
-):
+if "methane_results" in st.session_state:
 
-    results = st.session_state[
-        "methane_results"
-    ]
+    raw_results = st.session_state["methane_results"]
 
-    st.subheader(
-        "🔥 Methane Priority Ranking"
-    )
-
-    high_count = int(
-        (
-            results["status"]
-            == "HIGH"
-        ).sum()
-    )
-
-    elevated_count = int(
-        (
-            results["status"]
-            == "ELEVATED"
-        ).sum()
-    )
-
-    valid_count = int(
-        results[
-            "recent_ch4_ppb"
-        ].notna().sum()
-    )
-
-    avg_score = results[
-        "evidence_score"
-    ].m
+    # Streamlit sessions can survive code changes. Never assume that
+    # an old object in session_state is still a DataFrame.
+    if not isinstance(raw_results, pd.DataFra
