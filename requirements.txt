@@ -1,7 +1,8 @@
 streamlit
-earthengine-api
-folium
 streamlit-folium
-streamlit-autorefresh
+earthengine-api
+plotly
 pandas
 numpy
+requests
+folium
