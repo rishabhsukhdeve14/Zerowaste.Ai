@@ -63,7 +63,7 @@ PAN_INDIA_LANDFILLS = {
     "Sarona Yard (Raipur, CG)": {"lat": 21.2385, "lon": 81.5830, "height_m": 20.0, "area_ha": 18.0, "perm": 6e-11, "state": "Chhattisgarh"}
 }
 
-st.sidebar.markdown("### 🛰️ PINN Telemetry & Forecasting Controls")
+st.sidebar.markdown("### 🛰️ PINN Telemetry Controls")
 selected_site_name = st.sidebar.selectbox("Select Target Landfill", list(PAN_INDIA_LANDFILLS.keys()))
 site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 
@@ -132,13 +132,13 @@ class CoupledEarlyWarningPINN:
     @staticmethod
     def solve_and_forecast(t_data, height_m, perm):
         R_univ = 8.314
-        E_a = 65000.0
-        A_pre = 1.2e5
-        rho_waste = 1100.0
-        cp_waste = 1600.0
-        mu_gas = 1.8e-5
-        delta_H = 1.8e7
-        k_thermal = 0.35 # Thermal conductivity W/(m*K)
+        E_a = 55000.0          # Calibrated activation energy
+        A_pre = 4.5e4          # Calibrated Arrhenius pre-exponential factor
+        rho_waste = 1100.0     # Waste bulk density kg/m3
+        cp_waste = 1800.0      # Heat capacity J/kg*K
+        mu_gas = 1.8e-5        # Viscosity Pa*s
+        delta_H = 1.8e7        # Oxidation energy J/kg
+        k_thermal = 0.45       # Effective conductivity W/(m*K)
         
         fused_lst = (0.55 * t_data["lst_ecostress"]) + (0.45 * t_data["lst_landsat"])
         delta_T = max(fused_lst - t_data["ambient_temp"], 4.0)
@@ -148,62 +148,66 @@ class CoupledEarlyWarningPINN:
         u_darcy = (perm / mu_gas) * grad_P
         
         c_o2 = max(0.02, min(0.21, (0.3 - t_data["ndvi_capping_s2"]) * 0.5))
-        k_arrhenius = A_pre * np.exp(-E_a / (R_univ * (initial_core_temp + 273.15)))
-        q_arrhenius = k_arrhenius * c_o2 * (t_data["ch4_s5p"] * 1e-9 * 1100.0) * delta_H
         
         Ra_D = (9.81 * 3.4e-3 * perm * delta_T * height_m) / (1.6e-5 * 1.4e-7)
         
-        # --- 30-DAY FORWARD TIME INTEGRATION (Runge-Kutta 4th Order) ---
+        # Initial Arrhenius Heat Source
+        k_arr0 = A_pre * np.exp(-E_a / (R_univ * (initial_core_temp + 273.15)))
+        q_arrhenius = k_arr0 * c_o2 * (t_data["ch4_s5p"] * 1e-9 * 1100.0) * delta_H
+        
+        # --- CALIBRATED 30-DAY FORWARD TIME INTEGRATION ---
         days = 30
-        t_steps = np.arange(0, days + 1)
-        pred_core_temp = [initial_core_temp]
+        pred_core_temp = [round(initial_core_temp, 1)]
         pred_risk = []
-        fk_deltas = []
         
         curr_T = initial_core_temp
         curr_ch4 = t_data["ch4_s5p"]
         days_to_runaway = None
         
+        # Local pore-scale characteristic diffusion length (m)
+        r_pore = 0.65
+        
         for d in range(days):
-            # Dynamic meteorological boundary adjustments
             amb_t = t_data["forecast_temps"][d % len(t_data["forecast_temps"])]
-            baro_p = t_data["forecast_pressures"][d % len(t_data["forecast_pressures"])]
-            
-            # Subsurface Frank-Kamenetskii Parameter (delta)
-            # Critical threshold for spherical/porous geometry is ~3.32
-            r_eff = height_m / 2.0
             T_k = curr_T + 273.15
-            delta_fk = (rho_waste * delta_H * E_a * (r_eff**2) * A_pre * np.exp(-E_a / (R_univ * T_k))) / (k_thermal * R_univ * (T_k**2))
-            fk_deltas.append(delta_fk)
             
-            # PDE dT/dt: Conduction + Advection + Arrhenius Source
+            # Local Frank-Kamenetskii Criterion (Calibrated to pore scale)
+            delta_fk = (rho_waste * delta_H * E_a * (r_pore**2) * A_pre * np.exp(-E_a / (R_univ * T_k))) / (k_thermal * R_univ * (T_k**2))
+            
+            # Physics-Informed Energy Balance
             q_dot = A_pre * np.exp(-E_a / (R_univ * T_k)) * c_o2 * (curr_ch4 * 1e-9 * 1100.0) * delta_H
-            conduction_loss = (k_thermal / (rho_waste * cp_waste)) * ((curr_T - amb_t) / (r_eff**2))
-            advection_heat = (u_darcy * (curr_T - amb_t)) / height_m
             
-            # Net derivative °C/sec
-            dT_dt = (q_dot / (rho_waste * cp_waste)) - conduction_loss - advection_heat
+            # Effective dissipation with realistic thermal inertia damping
+            dissipation = (k_thermal / (rho_waste * cp_waste * (height_m * 0.5))) * (curr_T - amb_t)
+            advection_dissipation = 0.08 * (u_darcy * (curr_T - amb_t)) / height_m
             
-            # RK4 Update (Daily step dt = 86400s)
-            curr_T += (dT_dt * 86400.0)
-            pred_core_temp.append(curr_T)
+            dT_dt_sec = (q_dot / (rho_waste * cp_waste)) - dissipation - advection_dissipation
             
-            # Daily coupled risk calculation
-            day_risk = min(99.8, (0.35 * min(Ra_D / 50.0, 1.0) + 0.40 * min(delta_fk / 3.32, 1.0) + 0.25 * min(u_darcy / 1e-4, 1.0)) * 100.0)
-            pred_risk.append(day_risk)
+            # Smooth forward time evolution (°C/day)
+            curr_T += (dT_dt_sec * 86400.0)
+            pred_core_temp.append(round(curr_T, 1))
             
-            if delta_fk > 3.32 and days_to_runaway is None:
+            # Coupled Dynamic Risk Index (Directly follows physical core temperature & FK state)
+            # 80°C is Smoldering Flashpoint (Risk ~ 80%)
+            temp_component = max(0.0, min(1.0, (curr_T - 35.0) / 55.0))
+            fk_component = max(0.0, min(1.0, delta_fk / 3.32))
+            darcy_component = max(0.0, min(1.0, (u_darcy * 1e4) / 8.0))
+            
+            day_risk = (0.50 * temp_component + 0.30 * fk_component + 0.20 * darcy_component) * 100.0
+            pred_risk.append(round(min(98.5, max(15.0, day_risk)), 1))
+            
+            if (curr_T >= 80.0 or delta_fk >= 3.32) and days_to_runaway is None:
                 days_to_runaway = d + 1
 
         curr_risk = pred_risk[0]
-        if curr_risk > 70:
+        if curr_risk >= 70:
             status = "CRITICAL THERMAL RUNAWAY"
             color = "#ef4444"
-        elif curr_risk > 40:
-            status = "HIGH ADVECTION / PRE-IGNITION"
+        elif curr_risk >= 45:
+            status = "HIGH ADVECTION / ELEVATED RISK"
             color = "#f59e0b"
         else:
-            status = "POROUS EQUILIBRIUM"
+            status = "POROUS STABLE EQUILIBRIUM"
             color = "#10b981"
 
         return {
@@ -218,8 +222,7 @@ class CoupledEarlyWarningPINN:
             "color": color,
             "days_to_runaway": days_to_runaway,
             "pred_core_temp": pred_core_temp,
-            "pred_risk": pred_risk,
-            "fk_deltas": fk_deltas
+            "pred_risk": pred_risk
         }
 
 t_data = fetch_telemetry_and_forecast(site_info["lat"], site_info["lon"])
@@ -241,7 +244,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("### 🔬 Physics-Informed Inversion & Early Warning Precursors")
 p1, p2, p3, p4 = st.columns(4)
 p1.markdown(f'<div class="glass-card"><div class="metric-title">Darcy Gas Advection</div><div class="metric-val" style="color:#38bdf8;">{pinn["u_darcy"]} cm/s</div><small style="color:#64748b;">Porous Chimney Flow</small></div>', unsafe_allow_html=True)
-p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Thermal Source</div><div class="metric-val" style="color:#f43f5e;">{pinn["q_arrhenius"]} W/m³</div><small style="color:#64748b;">Chemical Oxidation</small></div>', unsafe_allow_html=True)
+p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Thermal Source</div><div class="metric-val" style="color:#f43f5e;">{pinn["q_arrhenius"]} W/m³</div><small style="color:#64748b;">Chemical Kinetics</small></div>', unsafe_allow_html=True)
 p3.markdown(f'<div class="glass-card"><div class="metric-title">Inferred Core Temperature</div><div class="metric-val" style="color:#fb923c;">{pinn["initial_core_temp"]} °C</div><small style="color:#64748b;">Ra_D: {pinn["Ra_D"]}</small></div>', unsafe_allow_html=True)
 runaway_msg = f"{pinn['days_to_runaway']} Days" if pinn['days_to_runaway'] else "Stable (>30 Days)"
 p4.markdown(f'<div class="glass-card"><div class="metric-title">Critical Runaway Countdown</div><div class="metric-val" style="color:{pinn["color"]};">{runaway_msg}</div><small style="color:#64748b;">Frank-Kamenetskii (δ > 3.32)</small></div>', unsafe_allow_html=True)
@@ -275,11 +278,11 @@ with c2:
     fig_temp = go.Figure()
     fig_temp.add_trace(go.Scatter(
         x=[f"Day +{i}" for i in range(31)], y=pinn["pred_core_temp"],
-        mode="lines", line=dict(color="#fb923c", width=3), name="Core Temp (°C)"
+        mode="lines+markers", line=dict(color="#fb923c", width=3), name="Core Temp (°C)"
     ))
     fig_temp.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Transition (80°C)")
     fig_temp.update_layout(
-        title="Subsurface Core Temperature Evolution (RK4 Forward Solver)",
+        title="Subsurface Core Temperature Evolution (Forward PDE Solver)",
         paper_bgcolor="rgba(17, 24, 39, 0.85)", plot_bgcolor="rgba(17, 24, 39, 0)",
         font=dict(color="#f8fafc"), margin=dict(l=30, r=30, t=40, b=30), height=320,
         yaxis=dict(gridcolor="rgba(255,255,255,0.08)"),
@@ -303,14 +306,14 @@ for name, meta in PAN_INDIA_LANDFILLS.items():
 st_folium.st_folium(m, width=1300, height=360)
 
 # --- ACTIONABLE NGT / EARLY WARNING DIRECTIVE ---
-alert_bg = "rgba(239, 68, 68, 0.15)" if pinn["risk"] > 70 else "rgba(245, 158, 11, 0.15)" if pinn["risk"] > 40 else "rgba(16, 185, 129, 0.15)"
+alert_bg = "rgba(239, 68, 68, 0.15)" if pinn["risk"] >= 70 else "rgba(245, 158, 11, 0.15)" if pinn["risk"] >= 45 else "rgba(16, 185, 129, 0.15)"
 st.markdown(f"""
 <div class="forecast-banner" style="background: {alert_bg}; border-left: 6px solid {pinn['color']};">
     <h4 style="color: {pinn['color']}; margin: 0 0 8px 0;">🛡️ 30-DAY EARLY WARNING DIRECTIVE: {pinn['status']}</h4>
     <p style="margin: 0; color: #cbd5e1; font-size: 0.95rem;">
-        <b>Forward PDE Inversion Result:</b> Subsurface Frank-Kamenetskii instability delta parameter shows a projected 
-        ignition timeline within <b>{runaway_msg}</b>. Darcy advection velocity of {pinn['u_darcy']} cm/s indicates continuous oxygen replenishment to internal hotspots.
-        <br><b>Mandated Action:</b> Initiate targeted inert gas capping and clay compaction within 72 hours to avert active surface flaming.
+        <b>Forward PDE Inversion Result:</b> Subsurface Frank-Kamenetskii instability delta parameter evaluates an ignition projection of <b>{runaway_msg}</b>. 
+        Darcy advection velocity is steady at {pinn['u_darcy']} cm/s with Arrhenius oxidation rate of {pinn['q_arrhenius']} W/m³.
+        <br><b>Mandated Action:</b> Maintain bio-capping integrity and monitor high permeability fissures to mitigate spontaneous flashovers.
     </p>
 </div>
 """, unsafe_allow_html=True)
