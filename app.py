@@ -75,6 +75,24 @@ live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
 h3_resolution = st.sidebar.select_slider("Uber H3 Resolution Focus", options=[6, 8, 10], value=10, help="Res 6 (~36km² Sentinel-5P), Res 8 (~0.73km² EMIT), Res 10 (~0.015km² Sentinel-1/2)")
 
+# --- H3 HELPER WRAPPERS (v3 / v4 Compatibility Support) ---
+def latlng_to_cell(lat, lon, res):
+    if hasattr(h3, 'latlng_to_cell'):
+        return h3.latlng_to_cell(lat, lon, res)
+    return h3.geo_to_h3(lat, lon, res)
+
+def grid_ring(cell, distance):
+    if hasattr(h3, 'grid_ring'):
+        return h3.grid_ring(cell, distance)
+    elif hasattr(h3, 'k_ring'):
+        return h3.k_ring(cell, distance)
+    return [cell]
+
+def cell_to_boundary(cell):
+    if hasattr(h3, 'cell_to_boundary'):
+        return h3.cell_to_boundary(cell)
+    return h3.h3_to_geo_boundary(cell)
+
 # --- MATHEMATICAL ENGINE FUNCTIONS ---
 def first_order_decay_ch4(waste_mass_tons, k=0.05, L0=100.0, age_years=15.0):
     """First Order Decay (FOD) Model for Organic Landfill Methane Generation"""
@@ -89,7 +107,7 @@ def fourier_subsurface_heat_flux(k_thermal, T_core, T_surface, depth_m):
     return -k_thermal * ((T_surface - T_core) / max(1.0, depth_m))
 
 def gaussian_plume_back_trajectory(C_obs, x_m, y_m, u_wind, sigma_y=15.0, sigma_z=10.0):
-    """Gaussian Plume Inverse Source Term Estimation: Q = C * 2pi * u * sigma_y * sigma_z / exp(...)"""
+    """Gaussian Plume Inverse Source Term Estimation"""
     denom = np.exp(-0.5 * (y_m / sigma_y)**2)
     if denom < 1e-4: denom = 1e-4
     Q_source = (C_obs * 2.0 * np.pi * u_wind * sigma_y * sigma_z) / denom
@@ -113,7 +131,7 @@ def generate_pdf_report(site_name, timestamp, ch4_res10, core_temp, eff_stress, 
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "1. H3 Multi-Resolution Cascade & Reverse Trajectory", ln=True)
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, f"- H3 Res 6 -> Res 8 -> Res 10 Vector Pinpoint Pinpoint CH4: {ch4_res10} ppb", ln=True)
+    pdf.cell(0, 6, f"- H3 Res 6 -> Res 8 -> Res 10 Vector Pinpoint CH4: {ch4_res10} ppb", ln=True)
     pdf.cell(0, 6, f"- First Order Decay (FOD) Organic Generation Rate: {round(fod_gen, 2)} Tons CH4/Day", ln=True)
     pdf.cell(0, 6, f"- InSAR Surface Displacement Rate: {insar_rate} mm/year", ln=True)
     pdf.ln(5)
@@ -193,9 +211,10 @@ def render_live_dashboard():
     co2e_avoided = round(fod_daily_gen * 28.0, 1)
     vcu_revenue = round(co2e_avoided * 20.0, 2)
     
-    # H3 Center Hexagons
-    h3_center = h3.geo_to_h3(site_info["lat"], site_info["lon"], h3_resolution)
-    h3_hexagons = list(h3.k_ring(h3_center, 2))
+    # H3 Center Hexagons using robust wrapper
+    h3_center = latlng_to_cell(site_info["lat"], site_info["lon"], h3_resolution)
+    h3_hexagons = set(grid_ring(h3_center, 1) | grid_ring(h3_center, 2))
+    h3_hexagons.add(h3_center)
     
     # Ticker
     st.markdown(f"""
@@ -218,7 +237,7 @@ def render_live_dashboard():
     # Generate PyDeck H3 Polygons
     h3_features = []
     for hex_id in h3_hexagons:
-        geo_boundary = h3.h3_to_geo_boundary(hex_id)
+        geo_boundary = cell_to_boundary(hex_id)
         # Convert (lat, lon) to (lon, lat) for pydeck
         coords = [[p[1], p[0]] for p in geo_boundary]
         coords.append(coords[0]) # close loop
