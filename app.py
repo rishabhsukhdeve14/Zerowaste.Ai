@@ -190,7 +190,7 @@ base_data = fetch_satellite_ground_truth(site_info["lat"], site_info["lon"])
 if "time_step" not in st.session_state:
     st.session_state.time_step = 0
 
-# --- NATIVE STREAMLIT FRAGMENT RUNNER (PREVENTS LOOPS & STRING SYNTAX ERRORS) ---
+# --- NATIVE STREAMLIT FRAGMENT RUNNER ---
 @st.fragment(run_every=refresh_speed if live_mode else None)
 def render_live_dashboard():
     st.session_state.time_step += 1
@@ -365,4 +365,5 @@ def render_live_dashboard():
         fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
         fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
         fig_t.update_layout(
-            title="Subsurface Core T
+            title="Subsurface Core Temperature Forecast",
+            paper_
