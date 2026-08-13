@@ -128,7 +128,7 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     return bytes(pdf.output())
 
 st.sidebar.markdown("---")
-pdf_container = st.sidebar.empty()
+pdf_container = st.sidebar.container()
 
 st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — SUBSURFACE DIGITAL TWIN & MRV</div>', unsafe_allow_html=True)
 
@@ -248,14 +248,14 @@ while True:
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
     
-    # --- DYNAMIC KEY FIX TO PREVENT DUPLICATE KEY ERRORS IN LOOPS ---
-    pdf_container.download_button(
-        label="📄 Download Carbon MRV Report",
-        data=pdf_bytes,
-        file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
-        mime="application/pdf",
-        key=f"pdf_download_btn_{t}"
-    )
+    # Static download button call in fixed container
+    with pdf_container:
+        st.download_button(
+            label="📄 Download Carbon MRV Report",
+            data=pdf_bytes,
+            file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
+            mime="application/pdf"
+        )
 
     ticker_placeholder.markdown(f"""
     <div class="ticker-bar">
@@ -361,4 +361,4 @@ while True:
             fig_r = go.Figure()
             fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
             fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
-            fig_r.update_layout({"
+            fig_r.update_layout({"title": "Spont
