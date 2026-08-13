@@ -290,12 +290,7 @@ def render_live_dashboard():
         for y in range(-4, 5):
             dist_from_center = np.sqrt(x**2 + y**2)
             for depth in range(1, 6):
-                # Smooth temperature gradient between surface and core temp
                 temp_val = live_lst + ((core_temp - live_lst) * ((6 - depth) / 5.0)) - (dist_from_center * 1.2)
-                
-                # -------------------------------------------------------------
-                # PHYSICS GUARD 4: Subsurface Seepage Gas >= Surface Ambient CH4
-                # -------------------------------------------------------------
                 ch4_seep = round(live_ch4 * (1.0 + ((6 - depth) * 0.08)), 1)
                 
                 r = int(min(255, max(20, (temp_val - 25) * 7.5)))
@@ -360,4 +355,10 @@ def render_live_dashboard():
         st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
         mrv_text = (
             f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>"
-            f"• Methane Captured Today: <b>{ch4_capture
+            f"• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>"
+            f"• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>"
+            f"• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
+        )
+        st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
+
+    st.markdown("
