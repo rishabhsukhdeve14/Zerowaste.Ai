@@ -358,4 +358,6 @@ def render_live_dashboard():
 
     with px2:
         st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
-        mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br
+        mrv_text = (
+            f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>"
+            f"• Methane Captured Today: <b>{ch4_capture
