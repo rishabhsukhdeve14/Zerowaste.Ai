@@ -81,7 +81,6 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
 
-# SAFE PDF GENERATOR (REMOVED UNICODE SYMBOLS TO PREVENT CRASH)
 def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy, q_arr, risk_idx, status_label, co2e_avoided, vcu_revenue, ndwi_val, insar_sub):
     pdf = FPDF()
     pdf.add_page()
@@ -366,4 +365,7 @@ while True:
         
         with g1:
             fig_r = go.Figure()
-            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="l
+            fig_r.add_trace(go.Scatter(
+                x=day_axis, 
+                y=base_risks, 
+                mode='lines+markers'
