@@ -83,10 +83,12 @@ def latlng_to_cell(lat, lon, res):
 
 def grid_ring(cell, distance):
     if hasattr(h3, 'grid_ring'):
-        return h3.grid_ring(cell, distance)
+        res = h3.grid_ring(cell, distance)
     elif hasattr(h3, 'k_ring'):
-        return h3.k_ring(cell, distance)
-    return [cell]
+        res = h3.k_ring(cell, distance)
+    else:
+        res = [cell]
+    return list(res)
 
 def cell_to_boundary(cell):
     if hasattr(h3, 'cell_to_boundary'):
@@ -213,7 +215,9 @@ def render_live_dashboard():
     
     # H3 Center Hexagons using robust wrapper
     h3_center = latlng_to_cell(site_info["lat"], site_info["lon"], h3_resolution)
-    h3_hexagons = set(grid_ring(h3_center, 1) | grid_ring(h3_center, 2))
+    ring1 = grid_ring(h3_center, 1)
+    ring2 = grid_ring(h3_center, 2)
+    h3_hexagons = set(ring1 + ring2)
     h3_hexagons.add(h3_center)
     
     # Ticker
