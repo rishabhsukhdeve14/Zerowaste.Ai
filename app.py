@@ -200,17 +200,29 @@ def render_live_dashboard():
     ist_now = get_ist_time()
     now_str = ist_now.strftime("%I:%M:%S %p")
     
-    live_ch4 = round(base_data["ch4"] + np.sin(t * 0.25) * 4.0, 1)
+    # -------------------------------------------------------------
+    # PHYSICS GUARD 1: Baseline Atmospheric CH4 Clamp
+    # -------------------------------------------------------------
+    live_ch4 = max(1800.0, round(base_data["ch4"] + np.sin(t * 0.25) * 4.0, 1))
     live_lst = round(base_data["lst"] + np.sin(t * 0.15) * 0.2, 1)
     live_ndwi = round(base_data["ndwi"] + np.sin(t * 0.05) * 0.01, 2)
     live_insar = round(base_data["insar"] + np.cos(t * 0.08) * 0.1, 1)
     
     moisture_multiplier = 1.0 + max(0.0, (live_ndwi - 0.2) * 2.5)
-    core_temp = round(live_lst + (site_info["height_m"] * 0.38), 1)
     
+    # -------------------------------------------------------------
+    # PHYSICS GUARD 2: Core Equilibrium Temp Clamp (Max 95C)
+    # -------------------------------------------------------------
+    core_temp_raw = live_lst + (site_info["height_m"] * 0.38)
+    core_temp = round(float(np.clip(core_temp_raw, live_lst, 95.0)), 1)
+    
+    # -------------------------------------------------------------
+    # PHYSICS GUARD 3: Darcy Velocity Porous Bounds Calibration
+    # -------------------------------------------------------------
     wind_mag = np.sqrt(base_data["wind_u"]**2 + base_data["wind_v"]**2)
     grad_p = (base_data["pressure"] * 100.0 * 0.01) / site_info["height_m"]
-    u_darcy = round(((site_info["perm"] / 1.8e-5) * grad_p * 1e2) + (wind_mag * 0.0001), 4)
+    u_darcy_raw = (((site_info["perm"] / 1.8e-5) * grad_p * 1e2) + (wind_mag * 0.0001)) * 0.1
+    u_darcy = round(float(np.clip(u_darcy_raw, 0.0001, 0.005)), 4)
     
     q_arr = round(4.5e4 * np.exp(-55000 / (8.314 * (core_temp + 273.15))) * 0.15 * (live_ch4 * 1e-9 * 1100) * 1.8e7 * moisture_multiplier, 3)
     
@@ -278,8 +290,13 @@ def render_live_dashboard():
         for y in range(-4, 5):
             dist_from_center = np.sqrt(x**2 + y**2)
             for depth in range(1, 6):
-                temp_val = core_temp - (depth * 4.0) - (dist_from_center * 2.0)
-                ch4_seep = live_ch4 * (1.0 - (depth * 0.12))
+                # Smooth temperature gradient between surface and core temp
+                temp_val = live_lst + ((core_temp - live_lst) * ((6 - depth) / 5.0)) - (dist_from_center * 1.2)
+                
+                # -------------------------------------------------------------
+                # PHYSICS GUARD 4: Subsurface Seepage Gas >= Surface Ambient CH4
+                # -------------------------------------------------------------
+                ch4_seep = round(live_ch4 * (1.0 + ((6 - depth) * 0.08)), 1)
                 
                 r = int(min(255, max(20, (temp_val - 25) * 7.5)))
                 g = int(max(20, 210 - (temp_val * 2.5)))
@@ -291,7 +308,7 @@ def render_live_dashboard():
                     "lon": grid_lon + (x * 0.0006),
                     "elevation": (6 - depth) * 10,
                     "temp": round(temp_val, 1),
-                    "ch4": round(ch4_seep, 1),
+                    "ch4": ch4_seep,
                     "color": [r, g, b, alpha]
                 })
     
@@ -341,41 +358,4 @@ def render_live_dashboard():
 
     with px2:
         st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
-        mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
-        st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
-    g1, g2 = st.columns(2)
-    
-    with g1:
-        fig_r = go.Figure()
-        fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
-        fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
-        fig_r.update_layout(
-            title="Spontaneous Ignition Risk Trajectory",
-            paper_bgcolor="rgba(17, 24, 39, 0.85)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#f8fafc"),
-            height=270,
-            margin=dict(l=20, r=20, t=40, b=20),
-            yaxis=dict(range=[0, 100])
-        )
-        st.plotly_chart(fig_r, use_container_width=True)
-
-    with g2:
-        fig_t = go.Figure()
-        fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
-        fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
-        fig_t.update_layout(
-            title="Subsurface Core Temperature Forecast",
-            paper_bgcolor="rgba(17, 24, 39, 0.85)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#f8fafc"),
-            height=270,
-            margin=dict(l=20, r=20, t=40, b=20)
-        )
-        st.plotly_chart(fig_t, use_container_width=True)
-
-# --- EXECUTE STREAMLIT FRAGMENT DASHBOARD ---
-render_live_dashboard()
+        mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br
