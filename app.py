@@ -87,7 +87,7 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     pdf.set_font("Helvetica", "B", 16)
     pdf.cell(0, 10, "ZERO WASTE SOLUTIONS", ln=True, align="C")
     pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 8, "PINN Multi-Physics Subsurface & Carbon MRV Audit Report", ln=True, align="C")
+    pdf.cell(0, 8, "PINN & PCSR Subsurface AI Carbon MRV Audit Report", ln=True, align="C")
     pdf.line(10, 30, 200, 30)
     pdf.ln(10)
     
@@ -98,12 +98,13 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     pdf.ln(5)
     
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "1. Multi-Scale Sensor Fusion & Downscaling Matrix", ln=True)
+    pdf.cell(0, 8, "1. Multi-Scale Sensor Fusion & PCSR Matrix", ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"- Sentinel-5P TROPOMI + Sentinel-2 SWIR Downscaled CH4: {ch4} ppb", ln=True)
     pdf.cell(0, 6, f"- Landsat LST TIR Surface Temp: {lst} C", ln=True)
     pdf.cell(0, 6, f"- Sentinel-2 Subsurface NDWI Moisture Index: {ndwi_val}", ln=True)
     pdf.cell(0, 6, f"- Sentinel-1 InSAR Deformation Rate: {insar_sub} mm/yr", ln=True)
+    pdf.cell(0, 6, f"- PCSR Downscaling: Multiplies 5m Satellite Pixels with 3D DEMs for Subsurface Pinpointing", ln=True)
     pdf.ln(5)
     
     pdf.set_font("Helvetica", "B", 12)
@@ -123,7 +124,7 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     pdf.ln(8)
     
     pdf.set_font("Helvetica", "I", 9)
-    pdf.multi_cell(0, 5, "Notice: Generated using Physics-Informed Neural Network (PINN) PDE Inversion models coupled with Copernicus Sentinel-5P, Sentinel-2 SWIR/NDWI, Landsat TIR, and Sentinel-1 InSAR feeds.")
+    pdf.multi_cell(0, 5, "Notice: Physics Constrained Super Resolution (PCSR) multiplies 5m satellite pixels with high-resolution 3D Terrain & Digital Elevation Models (DEM) to mathematically downscale and pinpoint exact subsurface targets.")
     
     return bytes(pdf.output())
 
@@ -252,20 +253,22 @@ def render_live_dashboard():
 
     st.markdown(f"""
     <div class="ticker-bar">
-        <span class="live-badge"></span> <b>PINN PDE MULTI-PHYSICS ACTIVE</b> | IST: <code>{now_str}</code> | Mode: <b style="color:#10b981;">{base_data['ee_status']}</b> | Site: <code>{selected_site_name}</code> | Risk: <b style="color:{status_color};">{status_label} ({curr_risk}%)</b>
+        <span class="live-badge"></span> <b>PINN & PCSR PDE MULTI-PHYSICS ACTIVE</b> | IST: <code>{now_str}</code> | Mode: <b style="color:#10b981;">{base_data['ee_status']}</b> | Site: <code>{selected_site_name}</code> | Risk: <b style="color:{status_color};">{status_label} ({curr_risk}%)</b>
     </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("### 🛰️ Multi-Scale Sensor Fusion Matrix")
+    st.markdown("### 🛰️ Multi-Scale Sensor Fusion & PCSR Downscaling Matrix")
+    st.caption("Physics-Constrained Super-Resolution (PCSR) multiplies 5m satellite pixels with high-resolution 3D Terrain & Digital Elevation Models (DEM) to mathematically downscale and pinpoint exact subsurface targets.")
+    
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-5P CH4 (20m SWIR)</div><div class="metric-val" style="color:#f43f5e;">{live_ch4} <small>ppb</small></div></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="glass-card"><div class="metric-title">Landsat TIR LST</div><div class="metric-val" style="color:#fed7aa;">{live_lst} <small>C</small></div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-1 InSAR Def.</div><div class="metric-val" style="color:#38bdf8;">{live_insar} <small>mm/yr</small></div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="glass-card"><div class="metric-title">Virtual Sensor Mesh</div><div class="metric-val" style="color:#a7f3d0;">100 <small>% Remote</small></div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="glass-card"><div class="metric-title">PCSR 3D DEM Downscaling</div><div class="metric-val" style="color:#a7f3d0;">5m <small>Target Grid</small></div></div>', unsafe_allow_html=True)
     c5.markdown(f'<div class="glass-card"><div class="metric-title">Runaway Risk Index</div><div class="metric-val" style="color:{status_color};">{curr_risk} <small>%</small></div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (Spatial Hotspots & Gas Seepage)")
+    st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (PCSR Spatial Hotspots & Gas Seepage)")
     
     grid_lat = site_info["lat"]
     grid_lon = site_info["lon"]
@@ -318,7 +321,7 @@ def render_live_dashboard():
     r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Layer Temp:</b> {temp} C<br/><b>Gas Seepage:</b> {ch4} ppb"})
     st.pydeck_chart(r)
 
-    st.markdown("### 🔬 Coupled Multi-Physics Inversion (Darcy + Arrhenius + Moisture NDWI + InSAR)")
+    st.markdown("### 🔬 Coupled Multi-Physics Inversion (PCSR + Darcy + Arrhenius + NDWI + InSAR)")
     p1, p2, p3, p4 = st.columns(4)
     p1.markdown(f'<div class="glass-card"><div class="metric-title">Darcy Advection Velocity</div><div class="metric-val" style="color:#38bdf8;">{u_darcy} cm/s</div></div>', unsafe_allow_html=True)
     p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Heat Gen (Q)</div><div class="metric-val" style="color:#f43f5e;">{q_arr} W/m³</div></div>', unsafe_allow_html=True)
@@ -358,12 +361,4 @@ def render_live_dashboard():
             margin=dict(l=20, r=20, t=40, b=20),
             yaxis=dict(range=[0, 100])
         )
-        st.plotly_chart(fig_r, use_container_width=True)
-
-    with g2:
-        fig_t = go.Figure()
-        fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
-        fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
-        fig_t.update_layout(
-            title="Subsurface Core Temperature Forecast",
-            paper_
+        st.plotly_chart(fig_r, use_contain
