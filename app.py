@@ -2,7 +2,6 @@ import json
 import time
 import datetime
 import requests
-import io
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -82,7 +81,7 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
 
-# --- PDF GENERATOR ---
+# SAFE PDF GENERATOR (REMOVED UNICODE SYMBOLS TO PREVENT CRASH)
 def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy, q_arr, risk_idx, status_label, co2e_avoided, vcu_revenue, ndwi_val, insar_sub):
     pdf = FPDF()
     pdf.add_page()
@@ -162,19 +161,16 @@ def fetch_satellite_ground_truth(lat, lon):
             d_start = (now - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
             d_end = now.strftime('%Y-%m-%d')
             
-            # S5P CH4
             s5p = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CH4').select('CH4_column_volume_mixing_ratio_dry_air').filterBounds(pt).filterDate(d_start, d_end).mean()
             ch4_val = s5p.reduceRegion(reducer=ee.Reducer.mean(), geometry=pt, scale=1100).get('CH4_column_volume_mixing_ratio_dry_air').getInfo()
             if ch4_val and ch4_val > 500: ch4_s5p = round(ch4_val, 1)
 
-            # Sentinel-2 NDWI (Moisture Index)
             s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED').filterBounds(pt).filterDate(d_start, d_end).sort('CLOUDY_PIXEL_PERCENTAGE').first()
             if s2:
                 ndwi = s2.normalizedDifference(['B3', 'B8'])
                 ndwi_res = ndwi.reduceRegion(reducer=ee.Reducer.mean(), geometry=pt, scale=20).get('nd').getInfo()
                 if ndwi_res is not None: ndwi_s2 = round(ndwi_res, 2)
 
-            # Landsat LST
             l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2').filterBounds(pt).filterDate(d_start, d_end).sort('CLOUD_COVER').first()
             if l8:
                 b10 = l8.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
@@ -211,23 +207,18 @@ while True:
     ist_now = get_ist_time()
     now_str = ist_now.strftime("%I:%M:%S %p")
     
-    # 1. Downscaled CH4 (TROPOMI 5.5km -> Sentinel-2 SWIR 20m)
     live_ch4 = round(base_data["ch4"] + np.sin(t * 0.25) * 4.0, 1)
     live_lst = round(base_data["lst"] + np.sin(t * 0.15) * 0.2, 1)
     live_ndwi = round(base_data["ndwi"] + np.sin(t * 0.05) * 0.01, 2)
     live_insar = round(base_data["insar"] + np.cos(t * 0.08) * 0.1, 1)
     
-    # 2. Moisture-Coupled Kinetics (NDWI > 0.3 accelerates Arrhenius)
     moisture_multiplier = 1.0 + max(0.0, (live_ndwi - 0.2) * 2.5)
-    
     core_temp = round(live_lst + (site_info["height_m"] * 0.38), 1)
     
-    # 3. Wind Vector Coupled Advection Velocity
     wind_mag = np.sqrt(base_data["wind_u"]**2 + base_data["wind_v"]**2)
     grad_p = (base_data["pressure"] * 100.0 * 0.01) / site_info["height_m"]
     u_darcy = round(((site_info["perm"] / 1.8e-5) * grad_p * 1e2) + (wind_mag * 0.0001), 4)
     
-    # Arrhenius Heat Generation Engine
     q_arr = round(4.5e4 * np.exp(-55000 / (8.314 * (core_temp + 273.15))) * 0.15 * (live_ch4 * 1e-9 * 1100) * 1.8e7 * moisture_multiplier, 3)
     
     ch4_captured_tons = round(1.2 + np.sin(t * 0.1) * 0.15, 2)
@@ -247,7 +238,6 @@ while True:
         curr_T = max(amb, curr_T + dT_dt)
         base_temps.append(round(curr_T, 1))
         
-        # Risk index includes InSAR subsidence penalty
         subsidence_penalty = abs(live_insar) * 1.5
         risk_val = max(10.0, min(99.0, ((curr_T - 30.0) / 50.0) * 55.0 + ((live_ch4 - 1800.0) / 300.0) * 20.0 + subsidence_penalty))
         base_risks.append(round(risk_val, 1))
@@ -259,11 +249,11 @@ while True:
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
     pdf_container.download_button(
-        label="📄 Download Carbon MRV & Audit Report",
+        label="📄 Download Carbon MRV Report",
         data=pdf_bytes,
         file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
         mime="application/pdf",
-        key=f"pdf_download_btn_{t}"
+        key="pdf_download_btn_static"
     )
 
     ticker_placeholder.markdown(f"""
@@ -285,7 +275,6 @@ while True:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (Spatial Hotspots & Gas Seepage)")
         
-        # UPGRADED MULTI-LAYER GRADIENT VOXEL MESH
         grid_lat = site_info["lat"]
         grid_lon = site_info["lon"]
         voxel_data = []
@@ -368,4 +357,13 @@ while True:
                        f"• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH₄</b><br/>" \
                        f"• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO₂e</b><br/>" \
                        f"• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
-            st.mar
+            st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
+
+    with charts_placeholder.container():
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
+        g1, g2 = st.columns(2)
+        
+        with g1:
+            fig_r = go.Figure()
+            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="l
