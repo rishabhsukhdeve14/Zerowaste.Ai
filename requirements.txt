@@ -8,3 +8,4 @@ requests
 folium
 fpdf2
 pydeck
+streamlit_autorefresh
