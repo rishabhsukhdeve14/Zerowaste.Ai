@@ -340,22 +340,14 @@ while True:
         with px1:
             st.markdown("### 🤖 Autonomous Prescriptive Mitigation Plan")
             if is_critical:
-                action_text = f"<b>CRITICAL ACTION REQUIRED:</b> High Risk & InSAR Sinking Rate <b>({live_insar} mm/yr)</b>.<br/>" \
-                              f"• Deploy Bio-venting Nitrogen Injection Well #4.<br/>" \
-                              f"• Reduce Leachate Recirculation Rate by <b>18%</b>.<br/>" \
-                              f"• Scale Gas Blower Extraction Speed to <b>48 Hz</b>."
+                action_text = f"<b>CRITICAL ACTION REQUIRED:</b> High Risk & InSAR Sinking Rate <b>({live_insar} mm/yr)</b>.<br/>• Deploy Bio-venting Nitrogen Injection Well #4.<br/>• Reduce Leachate Recirculation Rate by <b>18%</b>.<br/>• Scale Gas Blower Extraction Speed to <b>48 Hz</b>."
             else:
-                action_text = f"<b>SYSTEM EQUILIBRIUM OPTIMAL:</b> Subsurface pressure gradient & slope displacement stable.<br/>" \
-                              f"• Maintain Standard Flare Extraction Rate at <b>38 Hz</b>.<br/>" \
-                              f"• Routine SWIR Drone Scan scheduled for Sector A."
+                action_text = f"<b>SYSTEM EQUILIBRIUM OPTIMAL:</b> Subsurface pressure gradient & slope displacement stable.<br/>• Maintain Standard Flare Extraction Rate at <b>38 Hz</b>.<br/>• Routine SWIR Drone Scan scheduled for Sector A."
             st.markdown(f'<div class="action-box">{action_text}</div>', unsafe_allow_html=True)
 
         with px2:
             st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
-            mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>" \
-                       f"• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>" \
-                       f"• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>" \
-                       f"• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
+            mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
             st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
 
     with charts_placeholder.container():
@@ -365,4 +357,6 @@ while True:
         
         with g1:
             fig_r = go.Figure()
-            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy
+            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
+            fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
+            fig_r.update_layout(title="Spontaneous Ignition Risk Trajectory", paper_bgcolor="rgba(17,24,39,0
