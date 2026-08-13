@@ -128,8 +128,6 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     return bytes(pdf.output())
 
 st.sidebar.markdown("---")
-pdf_container = st.sidebar.container()
-
 st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — SUBSURFACE DIGITAL TWIN & MRV</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=300)
@@ -189,17 +187,12 @@ def fetch_satellite_ground_truth(lat, lon):
 
 base_data = fetch_satellite_ground_truth(site_info["lat"], site_info["lon"])
 
-ticker_placeholder = st.empty()
-metrics_placeholder = st.empty()
-spatial_3d_placeholder = st.empty()
-physics_placeholder = st.empty()
-prescriptive_placeholder = st.empty()
-charts_placeholder = st.empty()
-
 if "time_step" not in st.session_state:
     st.session_state.time_step = 0
 
-while True:
+# --- NATIVE STREAMLIT FRAGMENT RUNNER (PREVENTS LOOPS & STRING SYNTAX ERRORS) ---
+@st.fragment(run_every=refresh_speed if live_mode else None)
+def render_live_dashboard():
     st.session_state.time_step += 1
     t = st.session_state.time_step
     
@@ -248,117 +241,128 @@ while True:
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
     
-    # Static download button call in fixed container
-    with pdf_container:
-        st.download_button(
-            label="📄 Download Carbon MRV Report",
-            data=pdf_bytes,
-            file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
-            mime="application/pdf"
-        )
+    # Sidebar PDF Download (No Dynamic Key Conflict)
+    st.sidebar.download_button(
+        label="📄 Download Carbon MRV Report",
+        data=pdf_bytes,
+        file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
+        mime="application/pdf",
+        key="pdf_mrv_download"
+    )
 
-    ticker_placeholder.markdown(f"""
+    st.markdown(f"""
     <div class="ticker-bar">
         <span class="live-badge"></span> <b>PINN PDE MULTI-PHYSICS ACTIVE</b> | IST: <code>{now_str}</code> | Mode: <b style="color:#10b981;">{base_data['ee_status']}</b> | Site: <code>{selected_site_name}</code> | Risk: <b style="color:{status_color};">{status_label} ({curr_risk}%)</b>
     </div>
     """, unsafe_allow_html=True)
     
-    with metrics_placeholder.container():
-        st.markdown("### 🛰️ Multi-Scale Sensor Fusion Matrix")
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-5P CH4 (20m SWIR)</div><div class="metric-val" style="color:#f43f5e;">{live_ch4} <small>ppb</small></div></div>', unsafe_allow_html=True)
-        c2.markdown(f'<div class="glass-card"><div class="metric-title">Landsat TIR LST</div><div class="metric-val" style="color:#fed7aa;">{live_lst} <small>C</small></div></div>', unsafe_allow_html=True)
-        c3.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-1 InSAR Def.</div><div class="metric-val" style="color:#38bdf8;">{live_insar} <small>mm/yr</small></div></div>', unsafe_allow_html=True)
-        c4.markdown(f'<div class="glass-card"><div class="metric-title">Virtual Sensor Mesh</div><div class="metric-val" style="color:#a7f3d0;">100 <small>% Remote</small></div></div>', unsafe_allow_html=True)
-        c5.markdown(f'<div class="glass-card"><div class="metric-title">Runaway Risk Index</div><div class="metric-val" style="color:{status_color};">{curr_risk} <small>%</small></div></div>', unsafe_allow_html=True)
+    st.markdown("### 🛰️ Multi-Scale Sensor Fusion Matrix")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-5P CH4 (20m SWIR)</div><div class="metric-val" style="color:#f43f5e;">{live_ch4} <small>ppb</small></div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="glass-card"><div class="metric-title">Landsat TIR LST</div><div class="metric-val" style="color:#fed7aa;">{live_lst} <small>C</small></div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-1 InSAR Def.</div><div class="metric-val" style="color:#38bdf8;">{live_insar} <small>mm/yr</small></div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="glass-card"><div class="metric-title">Virtual Sensor Mesh</div><div class="metric-val" style="color:#a7f3d0;">100 <small>% Remote</small></div></div>', unsafe_allow_html=True)
+    c5.markdown(f'<div class="glass-card"><div class="metric-title">Runaway Risk Index</div><div class="metric-val" style="color:{status_color};">{curr_risk} <small>%</small></div></div>', unsafe_allow_html=True)
 
-    with spatial_3d_placeholder.container():
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (Spatial Hotspots & Gas Seepage)")
-        
-        grid_lat = site_info["lat"]
-        grid_lon = site_info["lon"]
-        voxel_data = []
-        
-        for x in range(-4, 5):
-            for y in range(-4, 5):
-                dist_from_center = np.sqrt(x**2 + y**2)
-                for depth in range(1, 6):
-                    temp_val = core_temp - (depth * 4.0) - (dist_from_center * 2.0)
-                    ch4_seep = live_ch4 * (1.0 - (depth * 0.12))
-                    
-                    r = int(min(255, max(20, (temp_val - 25) * 7.5)))
-                    g = int(max(20, 210 - (temp_val * 2.5)))
-                    b = 50
-                    alpha = int(max(30, 210 - (depth * 30)))
-                    
-                    voxel_data.append({
-                        "lat": grid_lat + (y * 0.0006),
-                        "lon": grid_lon + (x * 0.0006),
-                        "elevation": (6 - depth) * 10,
-                        "temp": round(temp_val, 1),
-                        "ch4": round(ch4_seep, 1),
-                        "color": [r, g, b, alpha]
-                    })
-        
-        df_voxel = pd.DataFrame(voxel_data)
-        
-        layer = pdk.Layer(
-            "ColumnLayer",
-            data=df_voxel,
-            get_position=["lon", "lat"],
-            get_elevation="elevation",
-            elevation_scale=1.8,
-            radius=22,
-            get_fill_color="color",
-            pickable=True,
-            auto_highlight=True,
-            extruded=True
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (Spatial Hotspots & Gas Seepage)")
+    
+    grid_lat = site_info["lat"]
+    grid_lon = site_info["lon"]
+    voxel_data = []
+    
+    for x in range(-4, 5):
+        for y in range(-4, 5):
+            dist_from_center = np.sqrt(x**2 + y**2)
+            for depth in range(1, 6):
+                temp_val = core_temp - (depth * 4.0) - (dist_from_center * 2.0)
+                ch4_seep = live_ch4 * (1.0 - (depth * 0.12))
+                
+                r = int(min(255, max(20, (temp_val - 25) * 7.5)))
+                g = int(max(20, 210 - (temp_val * 2.5)))
+                b = 50
+                alpha = int(max(30, 210 - (depth * 30)))
+                
+                voxel_data.append({
+                    "lat": grid_lat + (y * 0.0006),
+                    "lon": grid_lon + (x * 0.0006),
+                    "elevation": (6 - depth) * 10,
+                    "temp": round(temp_val, 1),
+                    "ch4": round(ch4_seep, 1),
+                    "color": [r, g, b, alpha]
+                })
+    
+    df_voxel = pd.DataFrame(voxel_data)
+    
+    layer = pdk.Layer(
+        "ColumnLayer",
+        data=df_voxel,
+        get_position=["lon", "lat"],
+        get_elevation="elevation",
+        elevation_scale=1.8,
+        radius=22,
+        get_fill_color="color",
+        pickable=True,
+        auto_highlight=True,
+        extruded=True
+    )
+    
+    view_state = pdk.ViewState(
+        latitude=grid_lat,
+        longitude=grid_lon,
+        zoom=16.0,
+        pitch=58,
+        bearing=35
+    )
+    
+    r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Layer Temp:</b> {temp} C<br/><b>Gas Seepage:</b> {ch4} ppb"})
+    st.pydeck_chart(r)
+
+    st.markdown("### 🔬 Coupled Multi-Physics Inversion (Darcy + Arrhenius + Moisture NDWI + InSAR)")
+    p1, p2, p3, p4 = st.columns(4)
+    p1.markdown(f'<div class="glass-card"><div class="metric-title">Darcy Advection Velocity</div><div class="metric-val" style="color:#38bdf8;">{u_darcy} cm/s</div></div>', unsafe_allow_html=True)
+    p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Heat Gen (Q)</div><div class="metric-val" style="color:#f43f5e;">{q_arr} W/m³</div></div>', unsafe_allow_html=True)
+    p3.markdown(f'<div class="glass-card"><div class="metric-title">Subsurface Core Temp</div><div class="metric-val" style="color:#fb923c;">{core_temp} C</div></div>', unsafe_allow_html=True)
+    p4.markdown(f'<div class="glass-card"><div class="metric-title">NDWI Moisture Multiplier</div><div class="metric-val" style="color:#10b981;">{round(moisture_multiplier, 2)}x <small>Active</small></div></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    px1, px2 = st.columns(2)
+    
+    with px1:
+        st.markdown("### 🤖 Autonomous Prescriptive Mitigation Plan")
+        if is_critical:
+            action_text = f"<b>CRITICAL ACTION REQUIRED:</b> High Risk & InSAR Sinking Rate <b>({live_insar} mm/yr)</b>.<br/>• Deploy Bio-venting Nitrogen Injection Well #4.<br/>• Reduce Leachate Recirculation Rate by <b>18%</b>.<br/>• Scale Gas Blower Extraction Speed to <b>48 Hz</b>."
+        else:
+            action_text = f"<b>SYSTEM EQUILIBRIUM OPTIMAL:</b> Subsurface pressure gradient & slope displacement stable.<br/>• Maintain Standard Flare Extraction Rate at <b>38 Hz</b>.<br/>• Routine SWIR Drone Scan scheduled for Sector A."
+        st.markdown(f'<div class="action-box">{action_text}</div>', unsafe_allow_html=True)
+
+    with px2:
+        st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
+        mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
+        st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
+    g1, g2 = st.columns(2)
+    
+    with g1:
+        fig_r = go.Figure()
+        fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
+        fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
+        fig_r.update_layout(
+            title="Spontaneous Ignition Risk Trajectory",
+            paper_bgcolor="rgba(17, 24, 39, 0.85)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#f8fafc"),
+            height=270,
+            margin=dict(l=20, r=20, t=40, b=20),
+            yaxis=dict(range=[0, 100])
         )
-        
-        view_state = pdk.ViewState(
-            latitude=grid_lat,
-            longitude=grid_lon,
-            zoom=16.0,
-            pitch=58,
-            bearing=35
-        )
-        
-        r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Layer Temp:</b> {temp} C<br/><b>Gas Seepage:</b> {ch4} ppb"})
-        st.pydeck_chart(r)
+        st.plotly_chart(fig_r, use_container_width=True)
 
-    with physics_placeholder.container():
-        st.markdown("### 🔬 Coupled Multi-Physics Inversion (Darcy + Arrhenius + Moisture NDWI + InSAR)")
-        p1, p2, p3, p4 = st.columns(4)
-        p1.markdown(f'<div class="glass-card"><div class="metric-title">Darcy Advection Velocity</div><div class="metric-val" style="color:#38bdf8;">{u_darcy} cm/s</div></div>', unsafe_allow_html=True)
-        p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Heat Gen (Q)</div><div class="metric-val" style="color:#f43f5e;">{q_arr} W/m³</div></div>', unsafe_allow_html=True)
-        p3.markdown(f'<div class="glass-card"><div class="metric-title">Subsurface Core Temp</div><div class="metric-val" style="color:#fb923c;">{core_temp} C</div></div>', unsafe_allow_html=True)
-        p4.markdown(f'<div class="glass-card"><div class="metric-title">NDWI Moisture Multiplier</div><div class="metric-val" style="color:#10b981;">{round(moisture_multiplier, 2)}x <small>Active</small></div></div>', unsafe_allow_html=True)
-
-    with prescriptive_placeholder.container():
-        st.markdown("<br>", unsafe_allow_html=True)
-        px1, px2 = st.columns(2)
-        
-        with px1:
-            st.markdown("### 🤖 Autonomous Prescriptive Mitigation Plan")
-            if is_critical:
-                action_text = f"<b>CRITICAL ACTION REQUIRED:</b> High Risk & InSAR Sinking Rate <b>({live_insar} mm/yr)</b>.<br/>• Deploy Bio-venting Nitrogen Injection Well #4.<br/>• Reduce Leachate Recirculation Rate by <b>18%</b>.<br/>• Scale Gas Blower Extraction Speed to <b>48 Hz</b>."
-            else:
-                action_text = f"<b>SYSTEM EQUILIBRIUM OPTIMAL:</b> Subsurface pressure gradient & slope displacement stable.<br/>• Maintain Standard Flare Extraction Rate at <b>38 Hz</b>.<br/>• Routine SWIR Drone Scan scheduled for Sector A."
-            st.markdown(f'<div class="action-box">{action_text}</div>', unsafe_allow_html=True)
-
-        with px2:
-            st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
-            mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
-            st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
-
-    with charts_placeholder.container():
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
-        g1, g2 = st.columns(2)
-        
-        with g1:
-            fig_r = go.Figure()
-            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
-            fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
-            fig_r.update_layout({"title": "Spont
+    with g2:
+        fig_t = go.Figure()
+        fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
+        fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
+        fig_t.update_layout(
+          
