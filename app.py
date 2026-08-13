@@ -355,16 +355,15 @@ while True:
         st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
         g1, g2 = st.columns(2)
         
-        # --- FIXED SHORTENED PLOTLY LAYOUTS ---
+        # Clean inline layouts with zero line-wraps inside function calls
         bg_dark = "rgba(17, 24, 39, 0.85)"
-        font_clr = dict(color="#f8fafc")
-        margin_cfg = dict(l=20, r=20, t=40, b=20)
+        font_clr = {"color": "#f8fafc"}
+        margin_cfg = {"l": 20, "r": 20, "t": 40, "b": 20}
         
         with g1:
             fig_r = go.Figure()
-            fig_r.add_trace(
-                go.Scatter(
-                    x=day_axis, 
-                    y=base_risks, 
-                    mode="lines+markers", 
-                    line=dict(color="#f43f5e",
+            trace_r = go.Scatter(
+                x=day_axis,
+                y=base_risks,
+                mode="lines+markers",
+                line={"color": "#f43f5e", "width": 2
