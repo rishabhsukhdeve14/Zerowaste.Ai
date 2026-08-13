@@ -9,3 +9,4 @@ folium
 fpdf2
 pydeck
 streamlit_autorefresh
+h3
