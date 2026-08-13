@@ -97,15 +97,15 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     pdf.cell(0, 8, "1. Satellite Boundary Calibration Data", ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"- Sentinel-5P CH4 Concentration: {ch4} ppb", ln=True)
-    pdf.cell(0, 6, f"- Landsat LST Surface Temperature: {lst} °C", ln=True)
+    pdf.cell(0, 6, f"- Landsat LST Surface Temperature: {lst} C", ln=True)
     pdf.ln(5)
     
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "2. PINN Derived Subsurface Physics Model", ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"- Darcy Advection Gas Velocity: {u_darcy} cm/s", ln=True)
-    pdf.cell(0, 6, f"- Arrhenius Internal Heat Source: {q_arr} W/m³", ln=True)
-    pdf.cell(0, 6, f"- Core Subsurface Equilibrium Temp: {core_temp} °C", ln=True)
+    pdf.cell(0, 6, f"- Arrhenius Internal Heat Source: {q_arr} W/m3", ln=True)
+    pdf.cell(0, 6, f"- Core Subsurface Equilibrium Temp: {core_temp} C", ln=True)
     pdf.cell(0, 6, f"- Inferred Runaway Risk Index: {risk_idx} %", ln=True)
     pdf.ln(8)
     
@@ -114,7 +114,6 @@ def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy,
     
     return bytes(pdf.output())
 
-# PDF Button in Sidebar (Outside Loop to avoid Duplicate Element ID crash)
 st.sidebar.markdown("---")
 pdf_container = st.sidebar.empty()
 
@@ -216,14 +215,14 @@ while True:
     status_label = "CRITICAL THERMAL RUNAWAY" if is_critical else "ELEVATED ADVECTION" if curr_risk >= 45 else "STABLE EQUILIBRIUM"
     status_color = "#ef4444" if is_critical else "#f59e0b" if curr_risk >= 45 else "#10b981"
     
-    # Update PDF download button safely using st.empty container
+    # Dynamic Key Fix to prevent Streamlit duplicate element ID crash
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label)
     pdf_container.download_button(
         label="📄 Download Diagnostic PDF Report",
         data=pdf_bytes,
         file_name=f"ZWS_PINN_Report_{selected_site_name.split()[0]}.pdf",
         mime="application/pdf",
-        key="pdf_download_btn"
+        key=f"pdf_download_btn_{t}"
     )
 
     ticker_placeholder.markdown(f"""
