@@ -241,7 +241,7 @@ def render_live_dashboard():
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
     
-    # Sidebar PDF Download (No Dynamic Key Conflict)
+    # Sidebar PDF Download
     st.sidebar.download_button(
         label="📄 Download Carbon MRV Report",
         data=pdf_bytes,
@@ -365,4 +365,4 @@ def render_live_dashboard():
         fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
         fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
         fig_t.update_layout(
-          
+            title="Subsurface Core T
