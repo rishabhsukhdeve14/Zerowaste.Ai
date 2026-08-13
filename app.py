@@ -30,6 +30,7 @@ st.markdown("""
     .live-badge { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; margin-right: 8px; animation: blinker 1.2s linear infinite; }
     @keyframes blinker { 50% { opacity: 0; } }
     .anomaly-banner { background: rgba(244, 63, 94, 0.15); border: 1px solid #f43f5e; color: #f43f5e; padding: 12px 18px; border-radius: 8px; font-weight: 700; margin-bottom: 18px; }
+    .sim-card { background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; padding: 16px; margin-top: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -68,17 +69,17 @@ def load_historical_data():
 df_historical_master = load_historical_data()
 
 PAN_INDIA_LANDFILLS = {
-    "Ghazipur (Delhi NCR)": {"lat": 28.6231, "lon": 77.3288, "height_m": 65.0, "waste_mass_ton": 14e6},
-    "Bhalswa (Delhi NCR)": {"lat": 28.7410, "lon": 77.1517, "height_m": 62.0, "waste_mass_ton": 8e6},
-    "Okhla (Delhi NCR)": {"lat": 28.5303, "lon": 77.2789, "height_m": 55.0, "waste_mass_ton": 6e6},
-    "Deonar (Mumbai, MH)": {"lat": 19.0573, "lon": 72.9304, "height_m": 38.0, "waste_mass_ton": 16e6},
-    "Kanjurmarg (Mumbai, MH)": {"lat": 19.1362, "lon": 72.9463, "height_m": 35.0, "waste_mass_ton": 11e6},
-    "Pirana (Ahmedabad, GJ)": {"lat": 22.9831, "lon": 72.5802, "height_m": 50.0, "waste_mass_ton": 10e6},
-    "Mavallipura (Bengaluru, KA)": {"lat": 13.1292, "lon": 77.5481, "height_m": 25.0, "waste_mass_ton": 4e6},
-    "Kodungaiyur (Chennai, TN)": {"lat": 13.1364, "lon": 80.2743, "height_m": 30.0, "waste_mass_ton": 9e6},
-    "Dhapa (Kolkata, WB)": {"lat": 22.5471, "lon": 88.4162, "height_m": 32.0, "waste_mass_ton": 7e6},
-    "Durg-Rajnandgaon Yard (CG)": {"lat": 21.1904, "lon": 81.2848, "height_m": 22.0, "waste_mass_ton": 2e6},
-    "Sarona Yard (Raipur, CG)": {"lat": 21.2385, "lon": 81.5830, "height_m": 20.0, "waste_mass_ton": 2.5e6}
+    "Ghazipur (Delhi NCR)": {"lat": 28.6231, "lon": 77.3288, "height_m": 65.0, "waste_mass_ton": 14e6, "risk": "CRITICAL"},
+    "Bhalswa (Delhi NCR)": {"lat": 28.7410, "lon": 77.1517, "height_m": 62.0, "waste_mass_ton": 8e6, "risk": "HIGH"},
+    "Okhla (Delhi NCR)": {"lat": 28.5303, "lon": 77.2789, "height_m": 55.0, "waste_mass_ton": 6e6, "risk": "HIGH"},
+    "Deonar (Mumbai, MH)": {"lat": 19.0573, "lon": 72.9304, "height_m": 38.0, "waste_mass_ton": 16e6, "risk": "CRITICAL"},
+    "Kanjurmarg (Mumbai, MH)": {"lat": 19.1362, "lon": 72.9463, "height_m": 35.0, "waste_mass_ton": 11e6, "risk": "MEDIUM"},
+    "Pirana (Ahmedabad, GJ)": {"lat": 22.9831, "lon": 72.5802, "height_m": 50.0, "waste_mass_ton": 10e6, "risk": "HIGH"},
+    "Mavallipura (Bengaluru, KA)": {"lat": 13.1292, "lon": 77.5481, "height_m": 25.0, "waste_mass_ton": 4e6, "risk": "MEDIUM"},
+    "Kodungaiyur (Chennai, TN)": {"lat": 13.1364, "lon": 80.2743, "height_m": 30.0, "waste_mass_ton": 9e6, "risk": "HIGH"},
+    "Dhapa (Kolkata, WB)": {"lat": 22.5471, "lon": 88.4162, "height_m": 32.0, "waste_mass_ton": 7e6, "risk": "MEDIUM"},
+    "Durg-Rajnandgaon Yard (CG)": {"lat": 21.1904, "lon": 81.2848, "height_m": 22.0, "waste_mass_ton": 2e6, "risk": "LOW"},
+    "Sarona Yard (Raipur, CG)": {"lat": 21.2385, "lon": 81.5830, "height_m": 20.0, "waste_mass_ton": 2.5e6, "risk": "LOW"}
 }
 
 st.sidebar.markdown("### ⚙️ Dashboard Controls")
@@ -88,6 +89,11 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 live_mode = st.sidebar.toggle("🟢 Real-Time Telemetry", value=True)
 refresh_speed = st.sidebar.slider("Refresh Speed (sec)", 1.0, 5.0, 2.0)
 h3_resolution = st.sidebar.select_slider("Spatial Mapping Detail Level", options=[6, 8, 10], value=10)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💼 Commercial ROI Simulator")
+capture_eff = st.sidebar.slider("Methane Capture Efficiency (%)", 30, 95, 75)
+carbon_price = st.sidebar.slider("Carbon Credit Price ($/Ton)", 10, 50, 25)
 
 # --- H3 HELPER WRAPPERS ---
 def latlng_to_cell(lat, lon, res):
@@ -119,7 +125,7 @@ def generate_pdf_report(site_name, timestamp, ch4_val, co2e_avoided, vcu_revenue
     pdf.set_font("Helvetica", "B", 16)
     pdf.cell(0, 10, "ZERO WASTE SOLUTIONS", ln=True, align="C")
     pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 8, "Environmental Impact & Methane Assessment Report", ln=True, align="C")
+    pdf.cell(0, 8, "Environmental Impact & Commercial ROI Audit", ln=True, align="C")
     pdf.line(10, 30, 200, 30)
     pdf.ln(10)
     
@@ -129,11 +135,11 @@ def generate_pdf_report(site_name, timestamp, ch4_val, co2e_avoided, vcu_revenue
     pdf.ln(5)
     
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "1. Methane & Carbon Summary", ln=True)
+    pdf.cell(0, 8, "1. Methane & Carbon Commercial Potential", ln=True)
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 6, f"- Peak Methane Concentration: {ch4_val} ppb", ln=True)
-    pdf.cell(0, 6, f"- Daily CO2 Equivalent Offset: {co2e_avoided} Metric Tons / Day", ln=True)
-    pdf.cell(0, 6, f"- Potential Carbon Credit Value: ${vcu_revenue} USD / Day", ln=True)
+    pdf.cell(0, 6, f"- Daily Captured CO2 Equivalent: {co2e_avoided} Metric Tons / Day", ln=True)
+    pdf.cell(0, 6, f"- Estimated Monetizable Revenue: ${vcu_revenue:,.2f} USD / Year", ln=True)
     
     return bytes(pdf.output())
 
@@ -156,7 +162,7 @@ base_data = fetch_satellite_ground_truth(site_info["lat"], site_info["lon"])
 if "time_step" not in st.session_state:
     st.session_state.time_step = 0
 
-st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — ENVIRONMENTAL RISK MONITOR</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — METHANE RISK & COMMERCIAL ENGINE</div>', unsafe_allow_html=True)
 
 # --- DASHBOARD FRAGMENT ---
 @st.fragment(run_every=refresh_speed if live_mode else None)
@@ -172,26 +178,36 @@ def render_live_dashboard():
     ch4_res10 = round(ch4_res8 + 420.0 + np.sin(t * 0.3) * 25.0, 1)  
 
     fod_daily_gen = first_order_decay_ch4(site_info["waste_mass_ton"])
-    co2e_avoided = round(fod_daily_gen * 28.0, 1)
-    vcu_revenue = round(co2e_avoided * 20.0, 2)
+    captured_ch4_daily = fod_daily_gen * (capture_eff / 100.0)
+    co2e_avoided_daily = round(captured_ch4_daily * 28.0, 1)
+    
+    annual_revenue_usd = round(co2e_avoided_daily * 365.0 * carbon_price, 2)
     
     # Anomaly Alert
     if ch4_res10 > 2000.0:
-        st.markdown(f'<div class="anomaly-banner">🚨 HIGH EMISSION ALERT: Methane levels at {selected_site_name} exceeded threshold ({ch4_res10} ppb). Inspection recommended.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="anomaly-banner">🚨 HIGH EMISSION ALERT: Methane levels at {selected_site_name} exceeded threshold ({ch4_res10} ppb). Immediate intervention flagged.</div>', unsafe_allow_html=True)
 
     # Status Ticker
     st.markdown(f"""
     <div class="ticker-bar">
-        <span class="live-badge"></span> <b>LIVE MONITORING ACTIVE</b> | IST: <code>{now_str}</code> | Facility: <code>{selected_site_name}</code>
+        <span class="live-badge"></span> <b>LIVE MONITORING ACTIVE</b> | IST: <code>{now_str}</code> | Facility: <code>{selected_site_name}</code> | Facility Risk Status: <code>{site_info['risk']}</code>
     </div>
     """, unsafe_allow_html=True)
 
     # Executive Clean Metrics
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f'<div class="glass-card"><div class="metric-title">Methane Level (Target Zone)</div><div class="metric-val" style="color:#f43f5e;">{ch4_res10} <small>ppb</small></div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="glass-card"><div class="metric-title">Daily Methane Volume</div><div class="metric-val" style="color:#38bdf8;">{round(fod_daily_gen, 1)} <small>Tons/day</small></div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="glass-card"><div class="metric-title">CO2 Offset Potential</div><div class="metric-val" style="color:#10b981;">{co2e_avoided} <small>Tons CO2e/day</small></div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="glass-card"><div class="metric-title">Est. Daily Carbon Value</div><div class="metric-val" style="color:#f59e0b;">${vcu_revenue} <small>USD</small></div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="glass-card"><div class="metric-title">Methane Peak Level</div><div class="metric-val" style="color:#f43f5e;">{ch4_res10} <small>ppb</small></div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="glass-card"><div class="metric-title">Captured Methane</div><div class="metric-val" style="color:#38bdf8;">{round(captured_ch4_daily, 1)} <small>Tons/day</small></div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="glass-card"><div class="metric-title">CO2 Offset (@{capture_eff}%)</div><div class="metric-val" style="color:#10b981;">{co2e_avoided_daily} <small>Tons CO2e/day</small></div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="glass-card"><div class="metric-title">Projected Annual Revenue</div><div class="metric-val" style="color:#f59e0b;">${annual_revenue_usd:,.0f} <small>USD/yr</small></div></div>', unsafe_allow_html=True)
+
+    # --- WHAT-IF COMMERCIAL SCENARIO SIMULATION CARD ---
+    st.markdown(f"""
+    <div class="sim-card">
+        <h4 style="margin:0 0 8px 0; color:#10b981;">💡 What-If Commercial ROI Impact</h4>
+        At <b>{capture_eff}% Capture Efficiency</b> and carbon market valuation of <b>${carbon_price}/Ton CO2e</b>, installing Zero Waste Solutions abatement infrastructure at <b>{selected_site_name}</b> generates approximately <b>${annual_revenue_usd:,.2f} USD/Year</b> in monetizable carbon credits while offsetting <b>{co2e_avoided_daily * 365:,.0f} Tons of CO2e</b> annually.
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 🌐 Spatial Risk Map")
@@ -285,7 +301,7 @@ def render_live_dashboard():
             st.plotly_chart(fig_hist, use_container_width=True)
 
     # PDF Download in Sidebar
-    pdf_bytes = generate_pdf_report(selected_site_name, now_str, ch4_res10, co2e_avoided, vcu_revenue)
-    st.sidebar.download_button("📄 Download Executive Summary", pdf_bytes, file_name=f"Executive_Summary_{selected_site_name.split()[0]}.pdf", mime="application/pdf")
+    pdf_bytes = generate_pdf_report(selected_site_name, now_str, ch4_res10, co2e_avoided_daily, annual_revenue_usd)
+    st.sidebar.download_button("📄 Download ROI Audit Summary", pdf_bytes, file_name=f"ROI_Audit_{selected_site_name.split()[0]}.pdf", mime="application/pdf")
 
 render_live_dashboard()
