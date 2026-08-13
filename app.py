@@ -247,12 +247,14 @@ while True:
     status_color = "#ef4444" if is_critical else "#f59e0b" if curr_risk >= 45 else "#10b981"
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
+    
+    # --- DYNAMIC KEY FIX TO PREVENT DUPLICATE KEY ERRORS IN LOOPS ---
     pdf_container.download_button(
         label="📄 Download Carbon MRV Report",
         data=pdf_bytes,
         file_name=f"ZWS_MRV_Report_{selected_site_name.split()[0]}.pdf",
         mime="application/pdf",
-        key="pdf_download_btn_static"
+        key=f"pdf_download_btn_{t}"
     )
 
     ticker_placeholder.markdown(f"""
@@ -359,16 +361,4 @@ while True:
             fig_r = go.Figure()
             fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
             fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
-            fig_r.update_layout({"title": "Spontaneous Ignition Risk Trajectory", "paper_bgcolor": "rgba(17, 24, 39, 0.85)", "plot_bgcolor": "rgba(0,0,0,0)", "font": {"color": "#f8fafc"}, "height": 270, "margin": {"l": 20, "r": 20, "t": 40, "b": 20}, "yaxis": {"range": [0, 100]}})
-            st.plotly_chart(fig_r, use_container_width=True)
-
-        with g2:
-            fig_t = go.Figure()
-            fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
-            fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
-            fig_t.update_layout({"title": "Subsurface Core Equilibrium Temperature (C)", "paper_bgcolor": "rgba(17, 24, 39, 0.85)", "plot_bgcolor": "rgba(0,0,0,0)", "font": {"color": "#f8fafc"}, "height": 270, "margin": {"l": 20, "r": 20, "t": 40, "b": 20}})
-            st.plotly_chart(fig_t, use_container_width=True)
-
-    if not live_mode:
-        break
-    time.sleep(refresh_speed)
+            fig_r.update_layout({"
