@@ -29,6 +29,7 @@ st.markdown("""
     .ticker-bar { background: #0b0f19; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 14px; margin-bottom: 15px; font-size: 0.85rem; color: #38bdf8; }
     .live-badge { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; margin-right: 6px; animation: blinker 1s linear infinite; }
     @keyframes blinker { 50% { opacity: 0; } }
+    .anomaly-banner { background: rgba(244, 63, 94, 0.15); border: 1px solid #f43f5e; color: #f43f5e; padding: 10px 15px; border-radius: 8px; font-weight: 700; margin-bottom: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,7 +87,7 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 
 live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
-h3_resolution = st.sidebar.select_slider("Uber H3 Resolution Focus", options=[6, 8, 10], value=10, help="Res 6 (~36km² Sentinel-5P), Res 8 (~0.73km² EMIT), Res 10 (~0.015km² Sentinel-1/2)")
+h3_resolution = st.sidebar.select_slider("Uber H3 Resolution Focus", options=[6, 8, 10], value=10)
 
 # --- H3 HELPER WRAPPERS ---
 def latlng_to_cell(lat, lon, res):
@@ -208,6 +209,10 @@ def render_live_dashboard():
     ch4_res8 = round(ch4_res6 + 185.0 + np.cos(t * 0.15) * 12.0, 1) 
     ch4_res10 = round(ch4_res8 + 420.0 + np.sin(t * 0.3) * 25.0, 1)  
 
+    # Anomaly Trigger Warning Banner
+    if ch4_res10 > 2000.0:
+        st.markdown(f'<div class="anomaly-banner">🚨 METHANE ANOMALY ALERT: Threshold Exceeded ({ch4_res10} ppb) at {selected_site_name} (H3 Res 10 Cell Core). Immediate Plume Subsurface Inversion Recommended!</div>', unsafe_allow_html=True)
+
     # 2. Geotechnical & Thermodynamics Vector Calculations
     total_stress = site_info["height_m"] * 18.0  
     gas_pore_pressure = 45.0 + np.sin(t * 0.1) * 8.0 
@@ -291,29 +296,41 @@ def render_live_dashboard():
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- HISTORICAL TIME SERIES PLOTLY SECTION ---
+    # --- HISTORICAL TIME SERIES PLOTLY SECTION WITH MULTI-SITE COMPARISON ---
     if df_historical_master is not None:
-        st.markdown("### 📈 Historical Sentinel-5P Methane Trajectory (2019 - 2026)")
-        site_hist = df_historical_master[df_historical_master["Landfill"] == selected_site_name]
+        st.markdown("### 📈 Historical Sentinel-5P Methane Trajectory & Multi-Site Comparison (2019 - 2026)")
         
-        if not site_hist.empty:
+        sites_to_compare = st.multiselect(
+            "Select Landfills to Compare Side-by-Side:",
+            options=list(PAN_INDIA_LANDFILLS.keys()),
+            default=[selected_site_name, "Deonar (Mumbai, MH)", "Sarona Yard (Raipur, CG)"] if selected_site_name not in ["Deonar (Mumbai, MH)", "Sarona Yard (Raipur, CG)"] else [selected_site_name, "Ghazipur (Delhi NCR)"]
+        )
+        
+        if sites_to_compare:
             fig_hist = go.Figure()
-            fig_hist.add_trace(go.Scatter(
-                x=site_hist["Year"],
-                y=site_hist["CH4_ppb"],
-                mode='lines+markers',
-                name='CH4 (ppb)',
-                line=dict(color='#38bdf8', width=3),
-                marker=dict(size=8, color='#f43f5e')
-            ))
+            colors = ['#38bdf8', '#f43f5e', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#6366f1']
+            
+            for idx, s in enumerate(sites_to_compare):
+                site_hist = df_historical_master[df_historical_master["Landfill"] == s]
+                if not site_hist.empty:
+                    fig_hist.add_trace(go.Scatter(
+                        x=site_hist["Year"],
+                        y=site_hist["CH4_ppb"],
+                        mode='lines+markers',
+                        name=s,
+                        line=dict(width=3, color=colors[idx % len(colors)]),
+                        marker=dict(size=8)
+                    ))
+            
             fig_hist.update_layout(
-                title=f"Multi-Year Atmospheric Concentration — {selected_site_name}",
+                title="Pan-India Methane Concentration Benchmark (2019 - 2026)",
                 xaxis_title="Year",
                 yaxis_title="CH4 Concentration (ppb)",
                 template="plotly_dark",
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                height=350
+                height=380,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             st.plotly_chart(fig_hist, use_container_width=True)
 
