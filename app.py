@@ -82,7 +82,7 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
 
-# --- PDF GENERATOR (CPCB / EPA AUDIT READY COMPLIANCE) ---
+# --- PDF GENERATOR ---
 def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy, q_arr, risk_idx, status_label, co2e_avoided, vcu_revenue):
     pdf = FPDF()
     pdf.add_page()
@@ -207,10 +207,9 @@ while True:
     u_darcy = round((site_info["perm"] / 1.8e-5) * grad_p * 1e2, 4)
     q_arr = round(4.5e4 * np.exp(-55000 / (8.314 * (core_temp + 273.15))) * 0.15 * (live_ch4 * 1e-9 * 1100) * 1.8e7, 3)
     
-    # --- CALCULATE CARBON MRV FINANCIAL MONETIZATION ---
     ch4_captured_tons = round(1.2 + np.sin(t * 0.1) * 0.15, 2)
-    co2e_avoided = round(ch4_captured_tons * 28.0, 1) # Global Warming Potential (GWP) = 28
-    vcu_revenue = round(co2e_avoided * 20.0, 2) # $20 per ton VCU
+    co2e_avoided = round(ch4_captured_tons * 28.0, 1)
+    vcu_revenue = round(co2e_avoided * 20.0, 2)
     
     day_axis = [f"D+{i}" for i in range(1, 31)]
     base_temps = []
@@ -232,7 +231,6 @@ while True:
     status_label = "CRITICAL THERMAL RUNAWAY" if is_critical else "ELEVATED ADVECTION" if curr_risk >= 45 else "STABLE EQUILIBRIUM"
     status_color = "#ef4444" if is_critical else "#f59e0b" if curr_risk >= 45 else "#10b981"
     
-    # --- PDF DOWNLOAD BUTTON WITH DYNAMIC KEY FIX ---
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue)
     pdf_container.download_button(
         label="📄 Download Carbon MRV & Audit Report",
@@ -257,18 +255,16 @@ while True:
         c4.markdown(f'<div class="glass-card"><div class="metric-title">IoT Ground Array</div><div class="metric-val" style="color:#a7f3d0;">98.2 <small>% Sync</small></div></div>', unsafe_allow_html=True)
         c5.markdown(f'<div class="glass-card"><div class="metric-title">Runaway Risk Index</div><div class="metric-val" style="color:{status_color};">{curr_risk} <small>%</small></div></div>', unsafe_allow_html=True)
 
-    # --- 1. 3D VOLUMETRIC SUBSURFACE DIGITAL TWIN (PYDECK VOXEL GRID) ---
     with spatial_3d_placeholder.container():
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 🌐 3D Volumetric Subsurface Digital Twin (Spatial Hotspots & Gas Seepage)")
         
-        # Build 3D Voxel Grid Data
         grid_lat = site_info["lat"]
         grid_lon = site_info["lon"]
         voxel_data = []
         for x in range(-3, 4):
             for y in range(-3, 4):
-                for depth in range(1, 6): # 5 Subsurface Layers
+                for depth in range(1, 6):
                     temp_val = core_temp - (depth * 4.5) + np.sin(x + y + t * 0.2) * 3.0
                     ch4_seep = live_ch4 * (1.0 - (depth * 0.15))
                     color_r = int(min(255, max(50, (temp_val - 20) * 6)))
@@ -307,7 +303,6 @@ while True:
         r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Depth Temp:</b> {temp} °C<br/><b>Gas Seepage:</b> {ch4} ppb"})
         st.pydeck_chart(r)
 
-    # --- 2. REAL PINN MULTI-PHYSICS INVERSION & MECHANICS ---
     with physics_placeholder.container():
         st.markdown("### 🔬 Coupled Multi-Physics Inversion (Darcy + Arrhenius + Slope Stability)")
         p1, p2, p3, p4 = st.columns(4)
@@ -316,7 +311,6 @@ while True:
         p3.markdown(f'<div class="glass-card"><div class="metric-title">Subsurface Core Temp</div><div class="metric-val" style="color:#fb923c;">{core_temp} °C</div></div>', unsafe_allow_html=True)
         p4.markdown(f'<div class="glass-card"><div class="metric-title">Slope Subsidence Safety (FoS)</div><div class="metric-val" style="color:#10b981;">1.42 <small>Stable</small></div></div>', unsafe_allow_html=True)
 
-    # --- 3. PRESCRIPTIVE MITIGATION & 4. AUTOMATED CARBON MRV ---
     with prescriptive_placeholder.container():
         st.markdown("<br>", unsafe_allow_html=True)
         px1, px2 = st.columns(2)
@@ -358,4 +352,9 @@ while True:
             fig_t = go.Figure()
             fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
             fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80°C)")
-            fig_t.update_layout(title="Subsurface Core Equilibrium Temperature (°C)", paper_bgcolor="rgba(17,24,39,0.85)", plot_bgcolor="rgba(0,
+            fig_t.update_layout(title="Subsurface Core Equilibrium Temperature (°C)", paper_bgcolor="rgba(17,24,39,0.85)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#f8fafc"), height=270, margin=dict(l=20,r=20,t=40,b=20))
+            st.plotly_chart(fig_t, use_container_width=True, key=f"temp_chart_{t}")
+
+    if not live_mode:
+        break
+    time.sleep(refresh_speed)
