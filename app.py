@@ -2,11 +2,13 @@ import json
 import time
 import datetime
 import requests
+import io
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import ee
 import streamlit as st
+from fpdf import FPDF
 
 st.set_page_config(
     page_title="ZWS — Live Telemetry Terminal",
@@ -74,6 +76,45 @@ site_info = PAN_INDIA_LANDFILLS[selected_site_name]
 
 live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
+
+# PDF Report Generation Function
+def generate_pinn_pdf_report(site_name, timestamp, ch4, lst, core_temp, u_darcy, q_arr, risk_idx, status_label):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "ZERO WASTE SOLUTIONS", ln=True, align="C")
+    pdf.set_font("Helvetica", "", 12)
+    pdf.cell(0, 8, "PINN Physics-Informed Subsurface Diagnostic Report", ln=True, align="C")
+    pdf.line(10, 30, 200, 30)
+    pdf.ln(10)
+    
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 7, f"Asset Site: {site_name}", ln=True)
+    pdf.cell(0, 7, f"Report Generated (IST): {timestamp}", ln=True)
+    pdf.cell(0, 7, f"System Operational Status: {status_label}", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "1. Satellite Boundary Calibration Data", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(90, 6, f"- Sentinel-5P CH4 Concentration: {ch4} ppb", ln=True)
+    pdf.cell(90, 6, f"- Landsat LST Surface Temperature: {lst} °C", ln=True)
+    pdf.ln(5)
+    
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "2. PINN Derived Subsurface Physics Model", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(90, 6, f"- Darcy Advection Gas Velocity: {u_darcy} cm/s", ln=True)
+    pdf.cell(90, 6, f"- Arrhenius Internal Heat Source: {q_arr} W/m³", ln=True)
+    pdf.cell(90, 6, f"- Core Subsurface Equilibrium Temp: {core_temp} °C", ln=True)
+    pdf.cell(90, 6, f"- Inferred Runaway Risk Index: {risk_idx} %", ln=True)
+    pdf.ln(8)
+    
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.multi_cell(0, 5, "Notice: This automated report is generated using Physics-Informed Neural Network (PINN) PDE Inversion models coupled with Copernicus Sentinel-5P and USGS Landsat satellite feeds. Adhere to municipal hazardous safety protocols.")
+    
+    pdf_output = pdf.output()
+    return bytes(pdf_output)
 
 st.markdown('<div class="hero-title">ZERO WASTE SOLUTIONS — LIVE PINN TELEMETRY DESK</div>', unsafe_allow_html=True)
 
@@ -153,7 +194,7 @@ while True:
     # Arrhenius Heat Source (W/m3)
     q_arr = round(4.5e4 * np.exp(-55000 / (8.314 * (core_temp + 273.15))) * 0.15 * (live_ch4 * 1e-9 * 1100) * 1.8e7, 3)
     
-    # Energy Balance Forecast - Steady State Thermal Equilibrium
+    # Energy Balance Forecast
     day_axis = [f"D+{i}" for i in range(1, 31)]
     base_temps = []
     base_risks = []
@@ -161,12 +202,8 @@ while True:
     
     for d in range(30):
         amb = base_data["forecast_temps"][d % len(base_data["forecast_temps"])]
-        
-        # Generation balances dissipation near core equilibrium (~68°C - 70°C)
         heat_gen = q_arr * 0.15
         heat_loss = 0.008 * (curr_T - amb)
-        
-        # Micro thermal fluctuations around equilibrium state
         dT_dt = (heat_gen - heat_loss) + np.sin(d * 0.4) * 0.08
         
         curr_T = max(amb, curr_T + dT_dt)
@@ -180,6 +217,16 @@ while True:
     status_label = "CRITICAL THERMAL RUNAWAY" if is_critical else "ELEVATED ADVECTION" if curr_risk >= 45 else "STABLE EQUILIBRIUM"
     status_color = "#ef4444" if is_critical else "#f59e0b" if curr_risk >= 45 else "#10b981"
     
+    # PDF Download Button in Sidebar
+    pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label)
+    st.sidebar.markdown("---")
+    st.sidebar.download_button(
+        label="📄 Download Diagnostic PDF Report",
+        data=pdf_bytes,
+        file_name=f"ZWS_PINN_Report_{selected_site_name.split()[0]}.pdf",
+        mime="application/pdf"
+    )
+
     ticker_placeholder.markdown(f"""
     <div class="ticker-bar">
         <span class="live-badge"></span> <b>PINN PDE ENGINE ACTIVE (IST)</b> | Time: <code>{now_str}</code> | Mode: <b style="color:#10b981;">{base_data['ee_status']}</b> | Asset: <code>{selected_site_name}</code> | CH₄: <code>{live_ch4} ppb</code> | Status: <b style="color:{status_color};">{status_label}</b>
