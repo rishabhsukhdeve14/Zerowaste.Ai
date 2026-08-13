@@ -361,4 +361,21 @@ def render_live_dashboard():
             margin=dict(l=20, r=20, t=40, b=20),
             yaxis=dict(range=[0, 100])
         )
-        st.plotly_chart(fig_r, use_contain
+        st.plotly_chart(fig_r, use_container_width=True)
+
+    with g2:
+        fig_t = go.Figure()
+        fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
+        fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
+        fig_t.update_layout(
+            title="Subsurface Core Temperature Forecast",
+            paper_bgcolor="rgba(17, 24, 39, 0.85)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#f8fafc"),
+            height=270,
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
+        st.plotly_chart(fig_t, use_container_width=True)
+
+# --- EXECUTE STREAMLIT FRAGMENT DASHBOARD ---
+render_live_dashboard()
