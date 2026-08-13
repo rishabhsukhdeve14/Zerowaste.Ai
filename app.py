@@ -355,15 +355,8 @@ while True:
         st.markdown("### 📈 30-Day Forward PDE Energy-Balance Trajectory")
         g1, g2 = st.columns(2)
         
-        # Clean inline layouts with zero line-wraps inside function calls
-        bg_dark = "rgba(17, 24, 39, 0.85)"
-        font_clr = {"color": "#f8fafc"}
-        margin_cfg = {"l": 20, "r": 20, "t": 40, "b": 20}
-        
         with g1:
             fig_r = go.Figure()
-            trace_r = go.Scatter(
-                x=day_axis,
-                y=base_risks,
-                mode="lines+markers",
-                line={"color": "#f43f5e", "width": 2
+            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy", fillcolor="rgba(244, 63, 94, 0.12)"))
+            fig_r.add_hline(y=70, line_dash="dash", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
+            fig_r.update_layout(title="Spontaneous Ignition Risk Trajectory", paper_bgcolor="rgba(17, 24, 39
