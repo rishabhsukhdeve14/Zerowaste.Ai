@@ -264,8 +264,8 @@ while True:
     with metrics_placeholder.container():
         st.markdown("### 🛰️ Multi-Scale Sensor Fusion Matrix")
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-5P CH₄ (20m SWIR)</div><div class="metric-val" style="color:#f43f5e;">{live_ch4} <small>ppb</small></div></div>', unsafe_allow_html=True)
-        c2.markdown(f'<div class="glass-card"><div class="metric-title">Landsat TIR LST</div><div class="metric-val" style="color:#fed7aa;">{live_lst} <small>°C</small></div></div>', unsafe_allow_html=True)
+        c1.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-5P CH4 (20m SWIR)</div><div class="metric-val" style="color:#f43f5e;">{live_ch4} <small>ppb</small></div></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="glass-card"><div class="metric-title">Landsat TIR LST</div><div class="metric-val" style="color:#fed7aa;">{live_lst} <small>C</small></div></div>', unsafe_allow_html=True)
         c3.markdown(f'<div class="glass-card"><div class="metric-title">Sentinel-1 InSAR Def.</div><div class="metric-val" style="color:#38bdf8;">{live_insar} <small>mm/yr</small></div></div>', unsafe_allow_html=True)
         c4.markdown(f'<div class="glass-card"><div class="metric-title">Virtual Sensor Mesh</div><div class="metric-val" style="color:#a7f3d0;">100 <small>% Remote</small></div></div>', unsafe_allow_html=True)
         c5.markdown(f'<div class="glass-card"><div class="metric-title">Runaway Risk Index</div><div class="metric-val" style="color:{status_color};">{curr_risk} <small>%</small></div></div>', unsafe_allow_html=True)
@@ -322,7 +322,7 @@ while True:
             bearing=35
         )
         
-        r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Layer Temp:</b> {temp} °C<br/><b>Gas Seepage:</b> {ch4} ppb"})
+        r = pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"html": "<b>Layer Temp:</b> {temp} C<br/><b>Gas Seepage:</b> {ch4} ppb"})
         st.pydeck_chart(r)
 
     with physics_placeholder.container():
@@ -330,7 +330,7 @@ while True:
         p1, p2, p3, p4 = st.columns(4)
         p1.markdown(f'<div class="glass-card"><div class="metric-title">Darcy Advection Velocity</div><div class="metric-val" style="color:#38bdf8;">{u_darcy} cm/s</div></div>', unsafe_allow_html=True)
         p2.markdown(f'<div class="glass-card"><div class="metric-title">Arrhenius Heat Gen (Q)</div><div class="metric-val" style="color:#f43f5e;">{q_arr} W/m³</div></div>', unsafe_allow_html=True)
-        p3.markdown(f'<div class="glass-card"><div class="metric-title">Subsurface Core Temp</div><div class="metric-val" style="color:#fb923c;">{core_temp} °C</div></div>', unsafe_allow_html=True)
+        p3.markdown(f'<div class="glass-card"><div class="metric-title">Subsurface Core Temp</div><div class="metric-val" style="color:#fb923c;">{core_temp} C</div></div>', unsafe_allow_html=True)
         p4.markdown(f'<div class="glass-card"><div class="metric-title">NDWI Moisture Multiplier</div><div class="metric-val" style="color:#10b981;">{round(moisture_multiplier, 2)}x <small>Active</small></div></div>', unsafe_allow_html=True)
 
     with prescriptive_placeholder.container():
@@ -353,8 +353,8 @@ while True:
         with px2:
             st.markdown("### 💰 Carbon Credits MRV & Monetization Engine")
             mrv_text = f"<b>VERRA VM0001 METHODOLOGY ESTIMATE:</b><br/>" \
-                       f"• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH₄</b><br/>" \
-                       f"• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO₂e</b><br/>" \
+                       f"• Methane Captured Today: <b>{ch4_captured_tons} Metric Tons CH4</b><br/>" \
+                       f"• Avoided Greenhouse Gases: <b>{co2e_avoided} Metric Tons CO2e</b><br/>" \
                        f"• Monetizable VCU Potential: <b style='color:#10b981;'>${vcu_revenue} USD / Day</b>"
             st.markdown(f'<div class="mrv-box">{mrv_text}</div>', unsafe_allow_html=True)
 
@@ -365,7 +365,4 @@ while True:
         
         with g1:
             fig_r = go.Figure()
-            fig_r.add_trace(go.Scatter(
-                x=day_axis, 
-                y=base_risks, 
-                mode='lines+markers'
+            fig_r.add_trace(go.Scatter(x=day_axis, y=base_risks, mode="lines+markers", line=dict(color="#f43f5e", width=2.5), fill="tozeroy
