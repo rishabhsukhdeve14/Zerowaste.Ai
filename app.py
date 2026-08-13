@@ -123,14 +123,7 @@ def cell_to_boundary(cell):
 
 # --- ADVANCED IPCC TIER 2 DYNAMIC DECAY ENGINE ---
 def dynamic_ipcc_decay_model(waste_mass_tons, organic_pct, moisture_regime, site_moisture_idx):
-    """
-    Computes IPCC Tier 2 / LandGEM Methane Yield
-    Adjusts decay rate k based on organic content and moisture index.
-    """
-    # L0 scaling: Standard 60 m3/ton for 55% organics
     L0 = 60.0 * (organic_pct / 55.0)
-    
-    # Base decay rate k
     k_base = 0.05
     moisture_mult = 0.85 if moisture_regime == "Dry Season" else (1.25 if moisture_regime == "Monsoon / High Moisture" else 1.0)
     k_effective = k_base * moisture_mult * site_moisture_idx
@@ -141,37 +134,45 @@ def dynamic_ipcc_decay_model(waste_mass_tons, organic_pct, moisture_regime, site
     return max(2.5, round(daily_tons, 2))
 
 def calculate_mrv_confidence_score(h3_res, ee_status):
-    """Calculates Verra/Gold Standard MRV Audit Confidence Index (%)"""
     base_score = 75.0
     if h3_res == 10: base_score += 15.0
     elif h3_res == 8: base_score += 8.0
     if ee_status: base_score += 8.0
     return min(98.5, round(base_score, 1))
 
+# --- UNICODE SAFE PDF GENERATOR ---
 def generate_pdf_report(site_name, timestamp, ch4_val, captured_ch4, co2e_avoided, carbon_rev, cbg_tons, mrv_score):
+    def clean_txt(text):
+        if not isinstance(text, str):
+            text = str(text)
+        replacements = {"—": "-", "–": "-", "₹": "INR "}
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, "ZEROWASTE.AI — GLOBAL MRV AUDIT REPORT", ln=True, align="C")
+    pdf.cell(0, 10, clean_txt("ZEROWASTE.AI - GLOBAL MRV AUDIT REPORT"), ln=True, align="C")
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 6, "Verra / Gold Standard Compliant Methane & Carbon Audit", ln=True, align="C")
+    pdf.cell(0, 6, clean_txt("Verra / Gold Standard Compliant Methane & Carbon Audit"), ln=True, align="C")
     pdf.line(10, 28, 200, 28)
     pdf.ln(8)
     
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 7, f"Facility Target: {site_name}", ln=True)
-    pdf.cell(0, 7, f"Audit Generated (IST): {timestamp}", ln=True)
-    pdf.cell(0, 7, f"MRV Audit Confidence Score: {mrv_score}%", ln=True)
+    pdf.cell(0, 7, clean_txt(f"Facility Target: {site_name}"), ln=True)
+    pdf.cell(0, 7, clean_txt(f"Audit Generated (IST): {timestamp}"), ln=True)
+    pdf.cell(0, 7, clean_txt(f"MRV Audit Confidence Score: {mrv_score}%"), ln=True)
     pdf.ln(5)
     
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "1. Executive Environmental & Energy Metrics", ln=True)
+    pdf.cell(0, 8, clean_txt("1. Executive Environmental & Energy Metrics"), ln=True)
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, f"- TROPOMI / Sentinel Satellite Concentration: {ch4_val} ppb", ln=True)
-    pdf.cell(0, 6, f"- Daily Captured Methane: {captured_ch4} Metric Tons / Day", ln=True)
-    pdf.cell(0, 6, f"- Daily Bio-CNG (CBG) Yield Potential: {cbg_tons} Tons / Day", ln=True)
-    pdf.cell(0, 6, f"- Daily CO2 Equivalent Offset: {co2e_avoided} Metric Tons CO2e / Day", ln=True)
-    pdf.cell(0, 6, f"- Projected Carbon Credit Revenue: ${carbon_rev:,.2f} USD / Year", ln=True)
+    pdf.cell(0, 6, clean_txt(f"- TROPOMI / Sentinel Satellite Concentration: {ch4_val} ppb"), ln=True)
+    pdf.cell(0, 6, clean_txt(f"- Daily Captured Methane: {captured_ch4} Metric Tons / Day"), ln=True)
+    pdf.cell(0, 6, clean_txt(f"- Daily Bio-CNG (CBG) Yield Potential: {cbg_tons} Tons / Day"), ln=True)
+    pdf.cell(0, 6, clean_txt(f"- Daily CO2 Equivalent Offset: {co2e_avoided} Metric Tons CO2e / Day"), ln=True)
+    pdf.cell(0, 6, clean_txt(f"- Projected Carbon Credit Revenue: ${carbon_rev:,.2f} USD / Year"), ln=True)
     
     return bytes(pdf.output())
 
@@ -204,42 +205,35 @@ def render_live_dashboard():
     ist_now = get_ist_time()
     now_str = ist_now.strftime("%I:%M:%S %p")
     
-    # Internal Value Calculations
     ch4_res6 = round(base_data["ch4"] + np.sin(t * 0.2) * 5.0, 1)   
     ch4_res8 = round(ch4_res6 + 185.0 + np.cos(t * 0.15) * 12.0, 1) 
     ch4_res10 = round(ch4_res8 + 420.0 + np.sin(t * 0.3) * 25.0, 1)  
 
-    # Dynamic IPCC Calculations
     fod_daily_gen = dynamic_ipcc_decay_model(site_info["waste_mass_ton"], organic_fraction, seasonal_moisture, site_info["moisture_idx"])
     captured_ch4_daily = round(fod_daily_gen * (capture_eff / 100.0), 1)
     co2e_avoided_daily = round(captured_ch4_daily * 28.0, 1)
     annual_carbon_rev_usd = round(co2e_avoided_daily * 365.0 * carbon_price, 2)
     
-    # Energy Output Calculations (1 Ton CH4 = ~1.35 Tons Bio-CNG / CBG)
     daily_cbg_tons = round(captured_ch4_daily * 1.35, 1)
     annual_cbg_rev_inr = round(daily_cbg_tons * 1000.0 * 365.0 * cbg_price_inr, 0)
     
     mrv_score = calculate_mrv_confidence_score(h3_resolution, ee_active)
 
-    # Anomaly Alert
     if ch4_res10 > 2000.0:
         st.markdown(f'<div class="anomaly-banner">🚨 HIGH EMISSION ANOMALY: Methane at {selected_site_name} spiked to {ch4_res10} ppb. Automated MRV Verification flagged.</div>', unsafe_allow_html=True)
 
-    # Status Ticker
     st.markdown(f"""
     <div class="ticker-bar">
         <span class="live-badge"></span> <b>LIVE SATELLITE & SENSOR STREAM</b> | IST: <code>{now_str}</code> | Facility: <code>{selected_site_name}</code> | MRV Audit Confidence: <b style="color:#10b981;">{mrv_score}%</b>
     </div>
     """, unsafe_allow_html=True)
 
-    # Executive Clean Metrics
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown(f'<div class="glass-card"><div class="metric-title">Satellite Peak CH4</div><div class="metric-val" style="color:#f43f5e;">{ch4_res10} <small>ppb</small></div></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="glass-card"><div class="metric-title">Captured Methane</div><div class="metric-val" style="color:#38bdf8;">{captured_ch4_daily} <small>Tons/day</small></div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="glass-card"><div class="metric-title">Bio-CNG (CBG) Yield</div><div class="metric-val" style="color:#a855f7;">{daily_cbg_tons} <small>Tons/day</small></div></div>', unsafe_allow_html=True)
     c4.markdown(f'<div class="glass-card"><div class="metric-title">Carbon Revenue</div><div class="metric-val" style="color:#f59e0b;">${annual_carbon_rev_usd:,.0f} <small>USD/yr</small></div></div>', unsafe_allow_html=True)
 
-    # --- DUAL MONETIZATION IMPACT CARD ---
     st.markdown(f"""
     <div class="sim-card">
         <h4 style="margin:0 0 8px 0; color:#10b981;">💡 Dual Monetization & Clean Energy ROI Impact</h4>
@@ -250,7 +244,6 @@ def render_live_dashboard():
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 🌐 Uber H3 High-Resolution Spatial Dispersion Matrix")
     
-    # H3 Hexagon Grid Generation with Wind Dispersion Plume
     h3_center = latlng_to_cell(site_info["lat"], site_info["lon"], h3_resolution)
     ring1 = list(grid_ring(h3_center, 1))
     ring2 = list(grid_ring(h3_center, 2))
@@ -299,8 +292,6 @@ def render_live_dashboard():
     st.pydeck_chart(pdk.Deck(layers=[polygon_layer], initial_view_state=view_state, tooltip={"html": "<b>H3 Zone ID:</b> {hex}<br/><b>Methane Reading:</b> {ch4} ppb"}))
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # --- PAN-INDIA MULTI-FACILITY MATRIX TABLE ---
     st.markdown("### 🏢 Pan-India Facilities Overview & Dual Monetization Matrix")
     matrix_data = []
     for s_name, s_data in PAN_INDIA_LANDFILLS.items():
@@ -320,8 +311,6 @@ def render_live_dashboard():
     st.dataframe(df_matrix, use_container_width=True, hide_index=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # --- HISTORICAL TIME SERIES SECTION ---
     if df_historical_master is not None:
         st.markdown("### 📈 Multi-Facility Trajectory Comparison (2019 - 2026)")
         
@@ -359,7 +348,6 @@ def render_live_dashboard():
             )
             st.plotly_chart(fig_hist, use_container_width=True)
 
-    # PDF Download in Sidebar
     pdf_bytes = generate_pdf_report(selected_site_name, now_str, ch4_res10, captured_ch4_daily, co2e_avoided_daily, annual_carbon_rev_usd, daily_cbg_tons, mrv_score)
     st.sidebar.download_button("📄 Export MRV Audit Report (PDF)", pdf_bytes, file_name=f"ZeroWaste_MRV_{selected_site_name.split()[0]}.pdf", mime="application/pdf")
 
