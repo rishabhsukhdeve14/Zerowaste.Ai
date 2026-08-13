@@ -27,8 +27,6 @@ st.markdown("""
     .metric-title { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
     .metric-val { font-size: 1.35rem; font-weight: 800; }
     .ticker-bar { background: #0b0f19; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 14px; margin-bottom: 15px; font-size: 0.85rem; color: #38bdf8; }
-    .action-box { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 12px; border-radius: 6px; margin-top: 10px; }
-    .mrv-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 12px; border-radius: 6px; margin-top: 10px; }
     .live-badge { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; margin-right: 6px; animation: blinker 1s linear infinite; }
     @keyframes blinker { 50% { opacity: 0; } }
 </style>
@@ -57,12 +55,27 @@ def init_ee():
 
 ee_active = init_ee()
 
+# --- LOAD HISTORICAL DATA MASTER ---
+@st.cache_data
+def load_historical_data():
+    try:
+        df = pd.read_csv("landfills_historical_master.csv")
+        return df
+    except Exception:
+        return None
+
+df_historical_master = load_historical_data()
+
 PAN_INDIA_LANDFILLS = {
     "Ghazipur (Delhi NCR)": {"lat": 28.6231, "lon": 77.3288, "height_m": 65.0, "area_ha": 29.0, "perm": 1e-11, "waste_mass_ton": 14e6},
     "Bhalswa (Delhi NCR)": {"lat": 28.7410, "lon": 77.1517, "height_m": 62.0, "area_ha": 21.0, "perm": 8e-12, "waste_mass_ton": 8e6},
     "Okhla (Delhi NCR)": {"lat": 28.5303, "lon": 77.2789, "height_m": 55.0, "area_ha": 22.0, "perm": 9e-12, "waste_mass_ton": 6e6},
     "Deonar (Mumbai, MH)": {"lat": 19.0573, "lon": 72.9304, "height_m": 38.0, "area_ha": 132.0, "perm": 2e-11, "waste_mass_ton": 16e6},
+    "Kanjurmarg (Mumbai, MH)": {"lat": 19.1362, "lon": 72.9463, "height_m": 35.0, "area_ha": 65.0, "perm": 1.8e-11, "waste_mass_ton": 11e6},
     "Pirana (Ahmedabad, GJ)": {"lat": 22.9831, "lon": 72.5802, "height_m": 50.0, "area_ha": 34.0, "perm": 1.5e-11, "waste_mass_ton": 10e6},
+    "Mavallipura (Bengaluru, KA)": {"lat": 13.1292, "lon": 77.5481, "height_m": 25.0, "area_ha": 40.0, "perm": 1.2e-11, "waste_mass_ton": 4e6},
+    "Kodungaiyur (Chennai, TN)": {"lat": 13.1364, "lon": 80.2743, "height_m": 30.0, "area_ha": 108.0, "perm": 1.4e-11, "waste_mass_ton": 9e6},
+    "Dhapa (Kolkata, WB)": {"lat": 22.5471, "lon": 88.4162, "height_m": 32.0, "area_ha": 28.0, "perm": 1.3e-11, "waste_mass_ton": 7e6},
     "Durg-Rajnandgaon Yard (CG)": {"lat": 21.1904, "lon": 81.2848, "height_m": 22.0, "area_ha": 15.0, "perm": 5e-12, "waste_mass_ton": 2e6},
     "Sarona Yard (Raipur, CG)": {"lat": 21.2385, "lon": 81.5830, "height_m": 20.0, "area_ha": 18.0, "perm": 6e-12, "waste_mass_ton": 2.5e6}
 }
@@ -75,7 +88,7 @@ live_mode = st.sidebar.toggle("🟢 Continuous Inversion", value=True)
 refresh_speed = st.sidebar.slider("Iteration Interval (sec)", 1.0, 5.0, 2.0)
 h3_resolution = st.sidebar.select_slider("Uber H3 Resolution Focus", options=[6, 8, 10], value=10, help="Res 6 (~36km² Sentinel-5P), Res 8 (~0.73km² EMIT), Res 10 (~0.015km² Sentinel-1/2)")
 
-# --- H3 HELPER WRAPPERS (v3 / v4 Compatibility Support) ---
+# --- H3 HELPER WRAPPERS ---
 def latlng_to_cell(lat, lon, res):
     if hasattr(h3, 'latlng_to_cell'):
         return h3.latlng_to_cell(lat, lon, res)
@@ -97,19 +110,15 @@ def cell_to_boundary(cell):
 
 # --- MATHEMATICAL ENGINE FUNCTIONS ---
 def first_order_decay_ch4(waste_mass_tons, k=0.05, L0=100.0, age_years=15.0):
-    """First Order Decay (FOD) Model for Organic Landfill Methane Generation"""
-    return waste_mass_tons * L0 * k * np.exp(-k * age_years) / 365.0 # Tons CH4/day
+    return waste_mass_tons * L0 * k * np.exp(-k * age_years) / 365.0 
 
 def terzaghi_effective_stress(total_stress_kPa, gas_pore_pressure_kPa):
-    """Terzaghi Effective Stress Formulation: sigma' = sigma - u_gas"""
     return max(0.1, total_stress_kPa - gas_pore_pressure_kPa)
 
 def fourier_subsurface_heat_flux(k_thermal, T_core, T_surface, depth_m):
-    """Fourier's Law of Heat Conduction: q = -k * (dT/dz)"""
     return -k_thermal * ((T_surface - T_core) / max(1.0, depth_m))
 
 def gaussian_plume_back_trajectory(C_obs, x_m, y_m, u_wind, sigma_y=15.0, sigma_z=10.0):
-    """Gaussian Plume Inverse Source Term Estimation"""
     denom = np.exp(-0.5 * (y_m / sigma_y)**2)
     if denom < 1e-4: denom = 1e-4
     Q_source = (C_obs * 2.0 * np.pi * u_wind * sigma_y * sigma_z) / denom
@@ -195,28 +204,28 @@ def render_live_dashboard():
     now_str = ist_now.strftime("%I:%M:%S %p")
     
     # 1. H3 Hierarchy Downscaling Simulation
-    ch4_res6 = round(base_data["ch4"] + np.sin(t * 0.2) * 5.0, 1)   # Sentinel-5P (36 km²)
-    ch4_res8 = round(ch4_res6 + 185.0 + np.cos(t * 0.15) * 12.0, 1) # NASA EMIT / ECOSTRESS (0.73 km²)
-    ch4_res10 = round(ch4_res8 + 420.0 + np.sin(t * 0.3) * 25.0, 1)  # Sentinel-1/2 Pinpoint (120m Plot)
+    ch4_res6 = round(base_data["ch4"] + np.sin(t * 0.2) * 5.0, 1)   
+    ch4_res8 = round(ch4_res6 + 185.0 + np.cos(t * 0.15) * 12.0, 1) 
+    ch4_res10 = round(ch4_res8 + 420.0 + np.sin(t * 0.3) * 25.0, 1)  
 
     # 2. Geotechnical & Thermodynamics Vector Calculations
-    total_stress = site_info["height_m"] * 18.0  # Bulk density estimation ~18 kN/m³
-    gas_pore_pressure = 45.0 + np.sin(t * 0.1) * 8.0 # Pore gas pressure in kPa
+    total_stress = site_info["height_m"] * 18.0  
+    gas_pore_pressure = 45.0 + np.sin(t * 0.1) * 8.0 
     eff_stress = round(terzaghi_effective_stress(total_stress, gas_pore_pressure), 1)
     
     core_temp = round(base_data["ambient"] + 24.0 + (site_info["height_m"] * 0.25), 1)
     heat_flux = round(fourier_subsurface_heat_flux(k_thermal=0.85, T_core=core_temp, T_surface=base_data["ambient"], depth_m=site_info["height_m"] / 2.0), 2)
     
     fod_daily_gen = first_order_decay_ch4(site_info["waste_mass_ton"])
-    insar_displacement_rate = round(-3.5 - (gas_pore_pressure * 0.08), 2) # mm/yr subsidence
+    insar_displacement_rate = round(-3.5 - (gas_pore_pressure * 0.08), 2) 
     
     co2e_avoided = round(fod_daily_gen * 28.0, 1)
     vcu_revenue = round(co2e_avoided * 20.0, 2)
     
-    # H3 Center Hexagons using robust wrapper
+    # H3 Center Hexagons
     h3_center = latlng_to_cell(site_info["lat"], site_info["lon"], h3_resolution)
-    ring1 = grid_ring(h3_center, 1)
-    ring2 = grid_ring(h3_center, 2)
+    ring1 = list(grid_ring(h3_center, 1))
+    ring2 = list(grid_ring(h3_center, 2))
     h3_hexagons = set(ring1 + ring2)
     h3_hexagons.add(h3_center)
     
@@ -242,11 +251,9 @@ def render_live_dashboard():
     h3_features = []
     for hex_id in h3_hexagons:
         geo_boundary = cell_to_boundary(hex_id)
-        # Convert (lat, lon) to (lon, lat) for pydeck
         coords = [[p[1], p[0]] for p in geo_boundary]
-        coords.append(coords[0]) # close loop
+        coords.append(coords[0])
         
-        # Tobler's law based decay from center
         dist = np.random.uniform(0.1, 1.0)
         ch4_hex = ch4_res10 * (1.0 - dist * 0.15)
         
@@ -283,6 +290,33 @@ def render_live_dashboard():
     st.pydeck_chart(pdk.Deck(layers=[polygon_layer], initial_view_state=view_state, tooltip={"html": "<b>H3 Hex Index:</b> {hex}<br/><b>Downscaled CH4 Concentration:</b> {ch4} ppb"}))
 
     st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- HISTORICAL TIME SERIES PLOTLY SECTION ---
+    if df_historical_master is not None:
+        st.markdown("### 📈 Historical Sentinel-5P Methane Trajectory (2019 - 2026)")
+        site_hist = df_historical_master[df_historical_master["Landfill"] == selected_site_name]
+        
+        if not site_hist.empty:
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Scatter(
+                x=site_hist["Year"],
+                y=site_hist["CH4_ppb"],
+                mode='lines+markers',
+                name='CH4 (ppb)',
+                line=dict(color='#38bdf8', width=3),
+                marker=dict(size=8, color='#f43f5e')
+            ))
+            fig_hist.update_layout(
+                title=f"Multi-Year Atmospheric Concentration — {selected_site_name}",
+                xaxis_title="Year",
+                yaxis_title="CH4 Concentration (ppb)",
+                template="plotly_dark",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=350
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+
     m1, m2 = st.columns(2)
     
     with m1:
