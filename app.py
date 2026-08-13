@@ -190,7 +190,7 @@ base_data = fetch_satellite_ground_truth(site_info["lat"], site_info["lon"])
 if "time_step" not in st.session_state:
     st.session_state.time_step = 0
 
-# --- NATIVE STREAMLIT FRAGMENT RUNNER (PREVENTS LOOPS & STRING SYNTAX ERRORS) ---
+# --- NATIVE STREAMLIT FRAGMENT RUNNER ---
 @st.fragment(run_every=refresh_speed if live_mode else None)
 def render_live_dashboard():
     st.session_state.time_step += 1
@@ -241,7 +241,6 @@ def render_live_dashboard():
     
     pdf_bytes = generate_pinn_pdf_report(selected_site_name, now_str, live_ch4, live_lst, core_temp, u_darcy, q_arr, curr_risk, status_label, co2e_avoided, vcu_revenue, live_ndwi, live_insar)
     
-    # Sidebar PDF Download (No Dynamic Key Conflict)
     st.sidebar.download_button(
         label="📄 Download Carbon MRV Report",
         data=pdf_bytes,
@@ -358,11 +357,13 @@ def render_live_dashboard():
             margin=dict(l=20, r=20, t=40, b=20),
             yaxis=dict(range=[0, 100])
         )
-        st.plotly_chart(fig_r, use_container_width=True)
 
     with g2:
         fig_t = go.Figure()
         fig_t.add_trace(go.Scatter(x=day_axis, y=base_temps, mode="lines+markers", line=dict(color="#fb923c", width=2.5)))
         fig_t.add_hline(y=80, line_dash="dot", line_color="#f59e0b", annotation_text="Smoldering Ignition Point (80 C)")
         fig_t.update_layout(
-          
+            title="Subsurface Core Equilibrium Temperature (C)",
+            paper_bgcolor="rgba(17, 24, 39, 0.85)",
+            plot_bgcolor="rgba(0,0,0,0)",
+ 
