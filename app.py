@@ -22,7 +22,7 @@ st.markdown("""
     /* Global Base */
     .stApp { background-color: #080c14; color: #f1f5f9; font-family: 'Inter', -apple-system, sans-serif; }
     
-    /* Responsive Responsive Typography Fix */
+    /* Responsive Typography Fix */
     .hero-title { 
         font-size: clamp(1.4rem, 4vw, 2.4rem); 
         font-weight: 800; 
@@ -179,10 +179,34 @@ elif module == "2. Global Methane Hotspot & Plume Tracking":
     st.caption("Multi-Satellite Earth Observation tracking Tier-1 Methane Plumes.")
     
     hotspots = pd.DataFrame([
-        {"Asset / Region": "Ghazipur Landfill Zone", "Country": "India", "Satellite": "Sentinel-5P", "Anomaly (ppb)": 2645, "Status": "Critical Plume"},
-        {"Permian Basin Segment", "Country": "USA", "Satellite": "GHGSat / S5P", "Anomaly (ppb)": 3120, "Status": "Pipeline Leak"},
-        {"Kuwait Super-Dumping Facility", "Country": "Kuwait", "Satellite": "Sentinel-5P", "Anomaly (ppb)": 2890, "Status": "High Decay"},
-        {"Durg-Rajnandgaon Yard", "Country": "India", "Satellite": "Sentinel-5P", "Anomaly (ppb)": 1940, "Status": "Low Anomaly"}
+        {
+            "Asset / Region": "Ghazipur Landfill Zone", 
+            "Country": "India", 
+            "Satellite": "Sentinel-5P", 
+            "Anomaly (ppb)": 2645, 
+            "Status": "Critical Plume"
+        },
+        {
+            "Asset / Region": "Permian Basin Segment", 
+            "Country": "USA", 
+            "Satellite": "GHGSat / S5P", 
+            "Anomaly (ppb)": 3120, 
+            "Status": "Pipeline Leak"
+        },
+        {
+            "Asset / Region": "Kuwait Super-Dumping Facility", 
+            "Country": "Kuwait", 
+            "Satellite": "Sentinel-5P", 
+            "Anomaly (ppb)": 2890, 
+            "Status": "High Decay"
+        },
+        {
+            "Asset / Region": "Durg-Rajnandgaon Yard", 
+            "Country": "India", 
+            "Satellite": "Sentinel-5P", 
+            "Anomaly (ppb)": 1940, 
+            "Status": "Low Anomaly"
+        }
     ])
     
     st.dataframe(hotspots, use_container_width=True, hide_index=True)
