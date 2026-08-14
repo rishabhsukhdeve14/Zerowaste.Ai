@@ -13,7 +13,7 @@ import ee
 # 1. PAGE CONFIGURATION & HIGH-TECH DARK THEME
 # ================================================================================
 st.set_page_config(
-    page_title="ZeroWaste.AI — Physics-Informed Subsurface Engine",
+    page_title="ZeroWaste.AI — Dynamic Physics Subsurface Engine",
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -102,21 +102,69 @@ def init_ee():
 ee_active = init_ee()
 
 # ================================================================================
-# 3. PAN-INDIA LANDFILL MASTER DATABASE
+# 3. PAN-INDIA LANDFILL DYNAMIC MASTER DATABASE (UNIQUE PARAMETERS PER SITE)
 # ================================================================================
 LANDFILL_DATABASE = {
-    "Ghazipur Landfill (Delhi)": {"lat": 28.6289, "lon": 77.3275, "phi": 18, "status": "Severe Danger", "base_psi": 34.2, "sensor": "Sentinel-5P / InSAR"},
-    "Bhalswa Dump Yard (Delhi)": {"lat": 28.7367, "lon": 77.1633, "phi": 21, "status": "Severe Danger", "base_psi": 31.8, "sensor": "Sentinel-5P / InSAR"},
-    "Okhla Dump Site (Delhi)": {"lat": 28.5308, "lon": 77.2753, "phi": 25, "status": "High Hazard", "base_psi": 29.5, "sensor": "Sentinel-5P / EMIT"},
-    "Deonar Dump Yard (Mumbai)": {"lat": 19.0628, "lon": 72.9231, "phi": 22, "status": "Severe Danger", "base_psi": 33.1, "sensor": "GHGSat / ECOSTRESS"},
-    "Kanjurmarg Landfill (Mumbai)": {"lat": 19.1351, "lon": 72.9392, "phi": 38, "status": "Moderate Hazard", "base_psi": 19.4, "sensor": "GHGSat / Sentinel-1"},
-    "Pirana Landfill (Ahmedabad)": {"lat": 22.9812, "lon": 72.5804, "phi": 24, "status": "High Hazard", "base_psi": 28.5, "sensor": "Sentinel-5P / EMIT"},
-    "Dhapa Dump Yard (Kolkata)": {"lat": 22.5448, "lon": 88.4118, "phi": 27, "status": "High Hazard", "base_psi": 26.8, "sensor": "Sentinel-5P / S1"},
-    "Perungudi Dump Yard (Chennai)": {"lat": 12.9554, "lon": 80.2371, "phi": 30, "status": "Moderate Hazard", "base_psi": 23.4, "sensor": "ECOSTRESS / S5P"},
-    "Mavallipura Yard (Bengaluru)": {"lat": 13.1231, "lon": 77.5451, "phi": 35, "status": "Moderate Hazard", "base_psi": 20.8, "sensor": "GHGSat / S1"},
-    "Jawaharnagar Yard (Hyderabad)": {"lat": 17.5183, "lon": 78.5832, "phi": 32, "status": "Moderate Hazard", "base_psi": 22.0, "sensor": "Sentinel-5P / InSAR"},
-    "Devguradia Dump Yard (Indore)": {"lat": 22.6841, "lon": 75.9221, "phi": 78, "status": "High Remediation / Safe", "base_psi": 5.2, "sensor": "Multi-Spectral S2"},
-    "Bhilai-Durg Industrial Belt (Chhattisgarh)": {"lat": 21.1938, "lon": 81.3509, "phi": 64, "status": "Moderate Stability", "base_psi": 11.4, "sensor": "Sentinel-5P / S1"}
+    "Ghazipur Landfill (Delhi)": {
+        "lat": 28.6289, "lon": 77.3275, "phi": 18, "status": "Severe Danger", 
+        "base_psi": 34.2, "insar_base_swell": 7.17, "default_depth": 16, 
+        "wind_bearing": 45, "sensor": "Sentinel-5P / InSAR"
+    },
+    "Bhalswa Dump Yard (Delhi)": {
+        "lat": 28.7367, "lon": 77.1633, "phi": 21, "status": "Severe Danger", 
+        "base_psi": 31.8, "insar_base_swell": 6.85, "default_depth": 14, 
+        "wind_bearing": 30, "sensor": "Sentinel-5P / InSAR"
+    },
+    "Okhla Dump Site (Delhi)": {
+        "lat": 28.5308, "lon": 77.2753, "phi": 25, "status": "High Hazard", 
+        "base_psi": 29.5, "insar_base_swell": 5.40, "default_depth": 12, 
+        "wind_bearing": 90, "sensor": "Sentinel-5P / EMIT"
+    },
+    "Deonar Dump Yard (Mumbai)": {
+        "lat": 19.0628, "lon": 72.9231, "phi": 22, "status": "Severe Danger", 
+        "base_psi": 33.1, "insar_base_swell": 8.25, "default_depth": 18, 
+        "wind_bearing": 210, "sensor": "GHGSat / ECOSTRESS"
+    },
+    "Kanjurmarg Landfill (Mumbai)": {
+        "lat": 19.1351, "lon": 72.9392, "phi": 38, "status": "Moderate Hazard", 
+        "base_psi": 19.4, "insar_base_swell": 3.12, "default_depth": 10, 
+        "wind_bearing": 180, "sensor": "GHGSat / Sentinel-1"
+    },
+    "Pirana Landfill (Ahmedabad)": {
+        "lat": 22.9812, "lon": 72.5804, "phi": 24, "status": "High Hazard", 
+        "base_psi": 28.5, "insar_base_swell": 4.95, "default_depth": 13, 
+        "wind_bearing": 270, "sensor": "Sentinel-5P / EMIT"
+    },
+    "Dhapa Dump Yard (Kolkata)": {
+        "lat": 22.5448, "lon": 88.4118, "phi": 27, "status": "High Hazard", 
+        "base_psi": 26.8, "insar_base_swell": 4.30, "default_depth": 11, 
+        "wind_bearing": 135, "sensor": "Sentinel-5P / S1"
+    },
+    "Perungudi Dump Yard (Chennai)": {
+        "lat": 12.9554, "lon": 80.2371, "phi": 30, "status": "Moderate Hazard", 
+        "base_psi": 23.4, "insar_base_swell": 3.80, "default_depth": 9, 
+        "wind_bearing": 110, "sensor": "ECOSTRESS / S5P"
+    },
+    "Mavallipura Yard (Bengaluru)": {
+        "lat": 13.1231, "lon": 77.5451, "phi": 35, "status": "Moderate Hazard", 
+        "base_psi": 20.8, "insar_base_swell": 2.90, "default_depth": 8, 
+        "wind_bearing": 80, "sensor": "GHGSat / S1"
+    },
+    "Jawaharnagar Yard (Hyderabad)": {
+        "lat": 17.5183, "lon": 78.5832, "phi": 32, "status": "Moderate Hazard", 
+        "base_psi": 22.0, "insar_base_swell": 3.45, "default_depth": 10, 
+        "wind_bearing": 60, "sensor": "Sentinel-5P / InSAR"
+    },
+    "Devguradia Dump Yard (Indore)": {
+        "lat": 22.6841, "lon": 75.9221, "phi": 78, "status": "High Remediation / Safe", 
+        "base_psi": 5.2, "insar_base_swell": 0.45, "default_depth": 4, 
+        "wind_bearing": 0, "sensor": "Multi-Spectral S2"
+    },
+    "Bhilai-Durg Industrial Belt (Chhattisgarh)": {
+        "lat": 21.1938, "lon": 81.3509, "phi": 64, "status": "Moderate Stability", 
+        "base_psi": 11.4, "insar_base_swell": 1.80, "default_depth": 7, 
+        "wind_bearing": 120, "sensor": "Sentinel-5P / S1"
+    }
 }
 
 # ================================================================================
@@ -149,15 +197,15 @@ else:
 # ================================================================================
 # 5. MAIN BRAND HEADER
 # ================================================================================
-st.markdown('<div class="brand-title">ZeroWaste.AI — Physics-Informed Subsurface Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="brand-sub">SatSure-Grade Earth Observation Platform with Inverse PINN Depth Sensing & InSAR Radar Displacements</div>', unsafe_allow_html=True)
+st.markdown('<div class="brand-title">ZeroWaste.AI — Dynamic Subsurface Physics Engine</div>', unsafe_allow_html=True)
+st.markdown('<div class="brand-sub">SatSure-Grade Earth Observation Platform with Dynamic PINN Inversion & InSAR Radar Displacements</div>', unsafe_allow_html=True)
 
 # ================================================================================
 # MODULE 1: INVERSE PINN CORE ENGINE
 # ================================================================================
 if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
     st.markdown("### ⚛️ Inverse Physics-Informed Neural Network (PINN) Core Engine")
-    st.caption("Resolving 15m deep subsurface temperature, methane PSI pressure, and permeability using multi-sensor satellite fusion without ground sensors.")
+    st.caption("Resolving subsurface temperature, methane PSI pressure, and permeability dynamically per site.")
 
     st.markdown("""
     <div class="math-box">
@@ -170,19 +218,22 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
 
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
     target_site_name = col_ctrl1.selectbox("Target Dump Site / Industrial Zone", list(LANDFILL_DATABASE.keys()))
-    depth_target = col_ctrl2.slider("Calibrated Subsurface Depth (Meters)", 1, 20, 16)
-    insar_swelling_mm = col_ctrl3.slider("InSAR Measured Ground Swell (mm)", 0.00, 15.00, 7.17)
-
+    
+    # Fetch Site Specific Defaults
     site_info = LANDFILL_DATABASE[target_site_name]
+    
+    # Dynamic Controls initialization based on selected site
+    depth_target = col_ctrl2.slider("Calibrated Subsurface Depth (Meters)", 1, 25, int(site_info["default_depth"]))
+    insar_swelling_mm = col_ctrl3.slider("InSAR Measured Ground Swell (mm)", 0.00, 15.00, float(site_info["insar_base_swell"]))
 
-    # Inversion Calculations
+    # Physics Inversion Equations
     alpha = 0.12
     beta = 0.45
     k0 = 1.8
 
     kz_calculated = k0 * math.exp(alpha * depth_target) * (1 + beta * (insar_swelling_mm / 10.0))
     subsurface_psi = round(site_info["base_psi"] + (insar_swelling_mm * 1.07) + (depth_target * 0.28), 2)
-    core_temp_c = round(42.0 + (insar_swelling_mm * 2.8) + (depth_target * 1.0), 1)
+    core_temp_c = round(32.0 + (insar_swelling_mm * 3.1) + (depth_target * 1.85), 1)
 
     m1, m2, m3, m4 = st.columns(4)
     m1.markdown(f'<div class="pinn-card"><div class="pinn-label">CORE TEMP @ {depth_target}M (FOURIER)</div><div class="pinn-val" style="color:#f43f5e;">{core_temp_c} °C</div><div class="pinn-formula">q = -K · ∇T</div></div>', unsafe_allow_html=True)
@@ -190,10 +241,12 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
     m3.markdown(f'<div class="pinn-card"><div class="pinn-label">THERMAL CONDUCTIVITY (K_Z)</div><div class="pinn-val" style="color:#a855f7;">{round(kz_calculated, 2)}</div><div class="pinn-formula">Tensor Mechanics</div></div>', unsafe_allow_html=True)
     m4.markdown(f'<div class="pinn-card"><div class="pinn-label">RADAR TRANSMITTER</div><div class="pinn-val" style="color:#10b981;">Sat Radar Active</div><div class="pinn-formula">{site_info["sensor"].split("/")[0]}</div></div>', unsafe_allow_html=True)
 
-    st.markdown("#### 📉 Subsurface Depth Profile (0m to 20m Inversion)")
-    depths = np.linspace(0, 20, 50)
-    temps = 30 + (insar_swelling_mm * 2.0) + (depths * 2.5)
-    pressures = (site_info["base_psi"] * 0.3) + (insar_swelling_mm * 1.2) + (depths * 1.4)
+    st.markdown(f"#### 📉 Dynamic Subsurface Depth Profile for {target_site_name}")
+    depths = np.linspace(0, 25, 50)
+    
+    # Dynamic Site-dependent curves
+    temps = 28 + (insar_swelling_mm * 1.8) + (depths * (1.5 + (site_info["base_psi"] / 30.0)))
+    pressures = (site_info["base_psi"] * 0.25) + (insar_swelling_mm * 1.1) + (depths * (1.1 + (depth_target / 15.0)))
 
     df_depth = pd.DataFrame({"Depth (m)": depths, "Temperature (°C)": temps, "Methane Pressure (PSI)": pressures})
     
@@ -218,7 +271,6 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
         legend=dict(orientation="h", y=1.12)
     )
     
-    # FIXED: Updated title_font syntax (No deprecation/ValueError)
     fig_depth.update_yaxes(title_text="Temperature (°C)", title_font=dict(color="#f43f5e"), secondary_y=False)
     fig_depth.update_yaxes(title_text="Methane Pressure (PSI)", title_font=dict(color="#38bdf8"), secondary_y=True)
 
@@ -236,19 +288,25 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
 
     l1, l2, l3 = st.columns(3)
     risk_score = 100 - site_data["phi"]
+    
     l1.metric("LSSS Hazard Index", f"{risk_score} / 100", delta="CRITICAL BLAST RISK" if risk_score > 60 else "STABLE", delta_color="inverse")
-    l2.metric("InSAR Displacement Rate", "+7.17 mm / 5-days", delta="Ground Swell Active")
-    l3.metric("Auto Suction Drill Vector", "Depth: 16m | Vector: 32° N", delta="Target Pinpointed")
+    l2.metric("InSAR Displacement Rate", f"+{site_data['insar_base_swell']} mm / 5-days", delta="Ground Swell Active")
+    l3.metric("Auto Suction Drill Vector", f"Depth: {site_data['default_depth']}m | Vector: {site_data['wind_bearing']}° N", delta="Target Pinpointed")
 
     st.markdown("---")
     st.markdown(f"#### 🗺️ Chain Reaction Hazard & Blast Impact Radius Map ({selected_site})")
 
     base_lat, base_lon = site_data["lat"], site_data["lon"]
+    wind_angle = math.radians(site_data["wind_bearing"])
     
+    # Calculate Dynamic Hotspot Dispersion Drift based on Wind Bearing
+    drift_lat = base_lat + (0.003 * math.cos(wind_angle))
+    drift_lon = base_lon + (0.003 * math.sin(wind_angle))
+
     blast_radius_df = pd.DataFrame([
-        {"lat": base_lat, "lon": base_lon, "radius": 400, "type": "Ground Zero Blast Radius"},
-        {"lat": base_lat, "lon": base_lon, "radius": 1200, "type": "High Risk Toxic Plume Zone"},
-        {"lat": base_lat, "lon": base_lon, "radius": 2500, "type": "Evacuation Buffer Zone"}
+        {"lat": base_lat, "lon": base_lon, "radius": 300 + (risk_score * 3), "type": "Ground Zero Blast Radius"},
+        {"lat": drift_lat, "lon": drift_lon, "radius": 800 + (risk_score * 8), "type": "High Risk Toxic Plume Zone"},
+        {"lat": base_lat, "lon": base_lon, "radius": 2000 + (risk_score * 10), "type": "Evacuation Buffer Zone"}
     ])
 
     layer_hazards = pdk.Layer(
@@ -260,10 +318,11 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
         pickable=True
     )
 
+    # Dynamic Offset Infrastructure Pinpoints
     infra_df = pd.DataFrame([
-        {"lat": base_lat + 0.004, "lon": base_lon + 0.003, "name": "Nearby Dense Colony", "risk": "CRITICAL"},
-        {"lat": base_lat - 0.005, "lon": base_lon + 0.002, "name": "Chemical Pipeline", "risk": "EXTREME HAZARD"},
-        {"lat": base_lat + 0.002, "lon": base_lon - 0.006, "name": "High-Voltage Power Grid", "risk": "HIGH RISK"}
+        {"lat": base_lat + 0.003, "lon": base_lon + 0.002, "name": f"{selected_site.split(' ')[0]} Dense Residential Settlement", "risk": "CRITICAL"},
+        {"lat": base_lat - 0.004, "lon": base_lon + 0.003, "name": "Underground Gas Pipeline Grid", "risk": "EXTREME HAZARD"},
+        {"lat": base_lat + 0.002, "lon": base_lon - 0.005, "name": "High-Voltage Transmission Substation", "risk": "HIGH RISK"}
     ])
 
     layer_infra = pdk.Layer(
@@ -271,11 +330,11 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
         data=infra_df,
         get_position=["lon", "lat"],
         get_color="[251, 191, 36, 250]",
-        get_radius=100,
+        get_radius=80,
         pickable=True
     )
 
-    view_state = pdk.ViewState(latitude=base_lat, longitude=base_lon, zoom=12.2, pitch=45)
+    view_state = pdk.ViewState(latitude=base_lat, longitude=base_lon, zoom=12.8, pitch=45)
     st.pydeck_chart(pdk.Deck(
         layers=[layer_hazards, layer_infra],
         initial_view_state=view_state,
@@ -296,6 +355,7 @@ else:
             "PHI Score": v["phi"],
             "Toxicity Status": v["status"],
             "Methane PSI": f"{v['base_psi']} PSI",
+            "InSAR Ground Swell": f"+{v['insar_base_swell']} mm",
             "Primary Sensor": v["sensor"]
         })
 
@@ -316,7 +376,7 @@ GET /api/v1/planetary-health-index?lat=28.6289&lon=77.3275
   "subsurface_metrics": {
     "15m_depth_temp_celsius": 78.4,
     "15m_depth_pressure_psi": 34.2,
-    "insar_ground_displacement_mm": 4.2
+    "insar_ground_displacement_mm": 7.17
   },
   "blast_prediction": {
     "hazard_level": "CRITICAL",
