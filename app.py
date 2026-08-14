@@ -112,7 +112,6 @@ class FourierNeuralOperator1D(nn.Module):
         self.fc2 = nn.Linear(128, 1)
 
     def forward(self, x):
-        # Continuous Infinite-Dimensional Mapping via Spectral FFT Domain
         x_in = self.fc0(x)
         x_ft = torch.fft.rfft(x_in, dim=1)
         out_ft = torch.zeros_like(x_ft)
@@ -179,21 +178,28 @@ with c4:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# Plume Simulation Pipeline
+# Plume Simulation Pipeline (Fixed with 15m Offset & Stable Bounds)
 # ---------------------------------------------------------
 def build_uncopyable_plume(lat0, lon0, q_flux, w_s, w_d, num_pts=450):
     rad = math.radians((450.0 - w_d) % 360.0)
-    x = np.linspace(10, 1200, num_pts)
+    
+    # Distance starting safely from 15 meters to prevent division-by-zero spikes
+    x = np.linspace(15, 1200, num_pts)
     np.random.seed(42)
     y = np.random.normal(0, np.sqrt(3.5 * x), num_pts)
     z = np.minimum(8.0 + np.sqrt(x) * 3.8, 160.0)
     
-    # Physics Dispersion Decay
-    sigma_y = np.maximum(0.08 * x * (1.0 + 0.0001 * x)**(-0.5), 1.0)
-    sigma_z = np.maximum(0.06 * x * (1.0 + 0.0015 * x)**(-0.5), 1.0)
+    # Stability-bounded dispersion parameters
+    sigma_y = np.maximum(0.08 * x * (1.0 + 0.0001 * x)**(-0.5), 2.0)
+    sigma_z = np.maximum(0.06 * x * (1.0 + 0.0015 * x)**(-0.5), 2.0)
+    
     q_g_s = (q_flux * 1000.0) / 3600.0
-    conc_g = (q_g_s / (2.0 * np.pi * max(w_s, 0.5) * sigma_y * sigma_z)) * np.exp(-0.5 * (y / sigma_y)**2)
-    ch4_ppb = 1850.0 + (conc_g * 1.52e6)
+    u_wind = max(w_s, 1.0)
+    
+    conc_g = (q_g_s / (2.0 * np.pi * u_wind * sigma_y * sigma_z)) * np.exp(-0.5 * (y / sigma_y)**2)
+    
+    # Real-world concentration bounds: 1850 ppb baseline, clipped max peak leak
+    ch4_ppb = 1850.0 + np.clip(conc_g * 1.2e4, 0.0, 2350.0)
     
     dx = (x * math.cos(rad)) - (y * math.sin(rad))
     dy = (x * math.sin(rad)) + (y * math.cos(rad))
@@ -203,7 +209,7 @@ def build_uncopyable_plume(lat0, lon0, q_flux, w_s, w_d, num_pts=450):
     
     colors = []
     for c in ch4_ppb:
-        norm = (c - 1850.0) / 1000.0
+        norm = (c - 1850.0) / 2000.0
         if norm > 0.5:
             colors.append([239, 68, 68, 220])
         elif norm > 0.2:
@@ -244,7 +250,7 @@ r = pdk.Deck(
 st.pydeck_chart(r)
 
 # ---------------------------------------------------------
-# Altair Downwind Decay Curve
+# Altair Downwind Decay Curve (Clean Scaled Axis)
 # ---------------------------------------------------------
 st.markdown("#### 📉 FNO Zero-Shot Downwind Dispersion Spectrum ($CH_4$ vs Distance)")
 
