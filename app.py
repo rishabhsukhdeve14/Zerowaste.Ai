@@ -161,8 +161,6 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
     insar_swelling_mm = col_ctrl3.slider("InSAR Measured Ground Swell (mm)", 0.0, 15.0, 4.2)
 
     # Core Physics Calculations (Inverse PINN Logic)
-    # Darcy's Law: q_g = - (K / \mu) * \nabla P
-    # Fourier's Law: q = -K * \nabla T
     alpha = 0.12  # Compaction coefficient
     beta = 0.45   # Moisture-thermal coupling factor
     k0 = 1.8      # Base material thermal impedance
@@ -220,7 +218,6 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
     # Spatial Deck with Radial Hazard Circles
     base_lat, base_lon = 28.6289, 77.3275  # Ghazipur Example
     
-    # Generate Synthetic Hazard Features
     blast_radius_df = pd.DataFrame([
         {"lat": base_lat, "lon": base_lon, "radius": 400, "type": "Ground Zero Blast Radius"},
         {"lat": base_lat, "lon": base_lon, "radius": 1200, "type": "High Risk Toxic Plume Zone"},
@@ -236,7 +233,6 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
         pickable=True
     )
 
-    # Adjacent Infrastructure Hotspots
     infra_df = pd.DataFrame([
         {"lat": base_lat + 0.004, "lon": base_lon + 0.003, "name": "Residential Colony A", "risk": "CRITICAL"},
         {"lat": base_lat - 0.005, "lon": base_lon + 0.002, "name": "Underground Gas Pipeline", "risk": "EXTREME HAZARD"},
@@ -275,10 +271,10 @@ else:
     # PHI City Table
     phi_data = pd.DataFrame([
         {"City / Dumpyard Zone": "Ghazipur Yard (Delhi)", "PHI Score": 18, "Toxicity Status": "Severe Danger", "Methane PSI": "34.2 PSI", "Primary Sensor": "Sentinel-5P / InSAR"},
-        {"Pirana Site (Ahmedabad)", "PHI Score": 24, "Toxicity Status": "High Hazard", "Methane PSI": "28.5 PSI", "Primary Sensor": "Sentinel-5P / EMIT"},
-        {"Deonar Yard (Mumbai)", "PHI Score": 31, "Toxicity Status": "Moderate Hazard", "Methane PSI": "22.1 PSI", "Primary Sensor": "GHGSat / ECOSTRESS"},
-        {"Bhilai-Durg Industrial Belt", "PHI Score": 64, "Toxicity Status": "Moderate Stability", "Methane PSI": "11.4 PSI", "Primary Sensor": "Sentinel-5P / S1"},
-        {"Reimaged Clean Grid (Zurich)", "PHI Score": 92, "Toxicity Status": "Optimal Health", "Methane PSI": "0.8 PSI", "Primary Sensor": "Multi-Spectral"}
+        {"City / Dumpyard Zone": "Pirana Site (Ahmedabad)", "PHI Score": 24, "Toxicity Status": "High Hazard", "Methane PSI": "28.5 PSI", "Primary Sensor": "Sentinel-5P / EMIT"},
+        {"City / Dumpyard Zone": "Deonar Yard (Mumbai)", "PHI Score": 31, "Toxicity Status": "Moderate Hazard", "Methane PSI": "22.1 PSI", "Primary Sensor": "GHGSat / ECOSTRESS"},
+        {"City / Dumpyard Zone": "Bhilai-Durg Industrial Belt", "PHI Score": 64, "Toxicity Status": "Moderate Stability", "Methane PSI": "11.4 PSI", "Primary Sensor": "Sentinel-5P / S1"},
+        {"City / Dumpyard Zone": "Reimaged Clean Grid (Zurich)", "PHI Score": 92, "Toxicity Status": "Optimal Health", "Methane PSI": "0.8 PSI", "Primary Sensor": "Multi-Spectral"}
     ])
 
     st.dataframe(phi_data, use_container_width=True, hide_index=True)
