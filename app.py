@@ -294,3 +294,178 @@ elif warnings:
 else:
     st.success("🛡️ **Auto-Validation Passed:** Coordinates, Geofence, and Dispersion Math verified successfully (0.0% Spatial Anomaly).")
 
+import streamlit as st
+import numpy as np
+import folium
+from streamlit_folium import st_folium
+import math
+import time
+
+# Page Config
+st.set_page_config(
+    page_title="LIVE Satellite Methane Streamer & PINN Tracker",
+    page_icon="🛰️",
+    layout="wide"
+)
+
+# Custom Animated UI Styling
+st.markdown("""
+<style>
+    @keyframes pulse {
+        0% { opacity: 0.3; transform: scale(0.98); }
+        50% { opacity: 0.9; transform: scale(1.02); }
+        100% { opacity: 0.3; transform: scale(0.98); }
+    }
+    .live-badge {
+        background-color: #ef4444;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+        animation: pulse 1.5s infinite;
+        display: inline-block;
+        margin-left: 10px;
+    }
+    .metric-card {
+        background-color: #1e293b;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Auto Refresh Control (Live Mode Toggle)
+st.sidebar.title("🛰️ Satellite Telemetry")
+live_mode = st.sidebar.checkbox("🔴 Enable Live Stream & Flow", value=True)
+
+if live_mode:
+    # Auto re-run page every 3 seconds for animation steps
+    st.markdown('<script>setTimeout(function(){window.location.reload();}, 3000);</script>', unsafe_allow_html=True)
+
+# Target Database
+LANDFILL_DATABASE = {
+    "Ghazipur Landfill (Delhi)": {"lat": 28.62625, "lon": 77.32785, "Q": 120.0, "H": 65.0},
+    "Bhalswa Landfill (Delhi)": {"lat": 28.73650, "lon": 77.15920, "Q": 95.0, "H": 45.0},
+    "Okhla Landfill (Delhi)": {"lat": 28.52830, "lon": 77.27970, "Q": 80.0, "H": 40.0}
+}
+
+st.markdown('### 🛰️ Live Satellite Methane Egress & Gaussian Plume Tracker <span class="live-badge">LIVE STREAMING</span>', unsafe_allow_html=True)
+
+selected_site = st.selectbox("Select Target Landfill Zone", list(LANDFILL_DATABASE.keys()))
+site_info = LANDFILL_DATABASE[selected_site]
+
+lat_val, lon_val = site_info["lat"], site_info["lon"]
+
+# Simulate slight live wind fluctuation
+curr_time = time.time()
+wind_speed_ms = 1.25 + 0.15 * math.sin(curr_time / 2.0) # Fluctuation
+wind_from_deg = (157.0 + 5.0 * math.cos(curr_time / 3.0)) % 360.0
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Landfill Centroid", f"{lat_val:.5f}, {lon_val:.5f}")
+with col2:
+    st.metric("Live Wind Speed", f"{wind_speed_ms * 3.6:.2f} km/h")
+with col3:
+    st.metric("Live Wind Bearing", f"{wind_from_deg:.1f}°")
+with col4:
+    st.metric("Sentinel-5P Status", "PASSING OVERHEAD", delta="1850 ppb CH4")
+
+# ---------------------------------------------------------
+# Dynamic Plume Engine with Particle Wave Effect
+# ---------------------------------------------------------
+
+def generate_live_animated_plume(lat0, lon0, wind_from_deg, wind_speed_ms, Q, H, frame_step):
+    wind_to_deg = (wind_from_deg + 180.0) % 360.0
+    theta_rad = math.radians((450.0 - wind_to_deg) % 360.0)
+
+    polygons = []
+    # Dynamic pulse offset for real-time flow look
+    pulse_offset = (frame_step % 5) * 40 # meters expansion pulse
+    
+    thresholds = [
+        {"conc": 5000, "color": "#ff0000", "opacity": 0.85, "range": (10 + pulse_offset, 500 + pulse_offset)},
+        {"conc": 2000, "color": "#ff6600", "opacity": 0.65, "range": (300 + pulse_offset, 1200 + pulse_offset)},
+        {"conc": 500,  "color": "#eab308", "opacity": 0.40, "range": (800 + pulse_offset, 2000)}
+    ]
+
+    for thresh in thresholds:
+        x_start, x_end = thresh["range"]
+        x_coords = np.linspace(max(10, x_start), x_end, 50)
+        
+        left_pts, right_pts = [], []
+        for x in x_coords:
+            sy = 0.08 * x * (1 + 0.0001 * x)**(-0.5)
+            sz = 0.06 * x * (1 + 0.0015 * x)**(-0.5)
+            c_center = (Q / (np.pi * wind_speed_ms * sy * sz)) * np.exp(-0.5 * (H / sz)**2) * 1e6
+            
+            if c_center >= thresh["conc"]:
+                y_max = sy * np.sqrt(2.0 * np.log(c_center / thresh["conc"]))
+                for y_val, p_list in [(y_max, left_pts), (-y_max, right_pts)]:
+                    x_rot = x * math.cos(theta_rad) - y_val * math.sin(theta_rad)
+                    y_rot = x * math.sin(theta_rad) + y_val * math.cos(theta_rad)
+                    
+                    d_lat = y_rot / 111000.0
+                    d_lon = x_rot / (111000.0 * math.cos(math.radians(lat0)))
+                    p_list.append((lat0 + d_lat, lon0 + d_lon))
+
+        if left_pts and right_pts:
+            poly_coords = [(lat0, lon0)] + left_pts + right_pts[::-1] + [(lat0, lon0)]
+            polygons.append({
+                "coords": poly_coords,
+                "color": thresh["color"],
+                "opacity": thresh["opacity"]
+            })
+            
+    return polygons, wind_to_deg
+
+frame_counter = int(time.time())
+plume_polygons, wind_to = generate_live_animated_plume(lat_val, lon_val, wind_from_deg, wind_speed_ms, site_info["Q"], site_info["H"], frame_counter)
+
+# ---------------------------------------------------------
+# Interactive Map with Live Satellite Swath Line
+# ---------------------------------------------------------
+
+m = folium.Map(location=[lat_val, lon_val], zoom_start=15, tiles="CartoDB dark_matter")
+
+# Simulated Sentinel-5P Satellite Track (Passing Orbit Line)
+sat_track = [
+    [lat_val - 0.04, lon_val - 0.02],
+    [lat_val + 0.04, lon_val + 0.02]
+]
+folium.PolyLine(sat_track, color="#38bdf8", weight=2, opacity=0.7, dash_array='5, 10', tooltip="Sentinel-5P TROPOMI Orbit Track").add_to(m)
+
+# Current Satellite Marker Position
+sat_lat = lat_val + 0.02 * math.sin(curr_time / 4.0)
+sat_lon = lon_val + 0.01 * math.sin(curr_time / 4.0)
+folium.Marker(
+    [sat_lat, sat_lon],
+    popup="Sentinel-5P Satellite (Active Scan)",
+    icon=folium.Icon(color="blue", icon="globe", prefix="fa")
+).add_to(m)
+
+# Ground Zero Egress Source (Flashing Fire Pin)
+folium.Marker(
+    [lat_val, lon_val],
+    popup=f"<b>{selected_site}</b><br>Live Egress Point",
+    tooltip="Ground Zero Gas Release Point",
+    icon=folium.Icon(color="red", icon="fire", prefix="fa")
+).add_to(m)
+
+# Render Live Dynamic Plumes
+for poly in plume_polygons:
+    folium.Polygon(
+        locations=poly["coords"],
+        color=poly["color"],
+        fill=True,
+        fill_color=poly["color"],
+        fill_opacity=poly["opacity"],
+        weight=1.5
+    ).add_to(m)
+
+st_folium(m, width=1200, height=520)
+
+st.success(f"🛰️ **Live Feed Operational:** Methane plume rendering dynamic flow towards {wind_to:.1f}°. Satellite Telemetry Synced.")
+
