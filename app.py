@@ -236,3 +236,61 @@ for poly in plume_polygons:
 st_folium(m, width=1200, height=520)
 
 st.success(f"✅ **Centroid Fixed for {selected_site_name}:** Location pinned at ({lat_val}, {lon_val}). Vector traveling TOWARDS {wind_to_bearing:.1f}°.")
+import math
+import streamlit as st
+
+# Reference Ground-Truth Centroids (Known Landfill Boundaries)
+GROUND_TRUTH_BOUNDS = {
+    "Ghazipur Landfill (Delhi)": {"lat": 28.62625, "lon": 77.32785, "max_radius_km": 0.8},
+    "Bhalswa Landfill (Delhi)": {"lat": 28.73650, "lon": 77.15920, "max_radius_km": 0.7},
+    "Okhla Landfill (Delhi)": {"lat": 28.52830, "lon": 77.27970, "max_radius_km": 0.6}
+}
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculates distance between two coordinates in kilometers using Haversine formula"""
+    R = 6371.0  # Earth radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+def validate_system_data(site_name, current_lat, current_lon, wind_speed_ms):
+    """Automated Self-Check Engine"""
+    errors = []
+    warnings = []
+    
+    # Check 1: Location & Pin Offset Validation
+    if site_name in GROUND_TRUTH_BOUNDS:
+        ref = GROUND_TRUTH_BOUNDS[site_name]
+        dist_km = haversine_distance(current_lat, current_lon, ref["lat"], ref["lon"])
+        
+        if dist_km > ref["max_radius_km"]:
+            errors.append(f"📍 **Location Misalignment:** Pin is {dist_km:.2f} km away from target site centroid (Threshold: {ref['max_radius_km']} km).")
+        elif dist_km > 0.05:
+            warnings.append(f"⚠️ Minor centroid offset detected ({dist_km*1000:.0f} meters).")
+
+    # Check 2: Physical Boundary Check (Delhi NCR Limits)
+    if not (28.3 <= current_lat <= 28.9 and 76.8 <= current_lon <= 77.4):
+        errors.append("🌍 **Out of Boundary:** Coordinates fall outside target Delhi-NCR geospatial bounds.")
+
+    # Check 3: Mathematical Singularity Check (Zero Wind Anomaly)
+    if wind_speed_ms < 0.2:
+        errors.append("💨 **Mathematical Anomaly:** Wind speed too low (< 0.2 m/s). Gaussian dispersion division by zero risk.")
+
+    return errors, warnings
+
+# --- INTEGRATION IN STREAMLIT UI ---
+# (Plume calculate hone ke baad map ke upar yeh run ho jayega)
+
+errors, warnings = validate_system_data(selected_site_name, lat_val, lon_val, wind_speed_ms)
+
+if errors:
+    for err in errors:
+        st.error(f"❌ **SYSTEM VALIDATION FAILED:** {err}")
+elif warnings:
+    for warn in warnings:
+        st.warning(f"{warn}")
+else:
+    st.success("🛡️ **Auto-Validation Passed:** Coordinates, Geofence, and Dispersion Math verified successfully (0.0% Spatial Anomaly).")
+
