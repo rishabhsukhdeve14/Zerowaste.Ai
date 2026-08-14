@@ -197,7 +197,7 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
 
     df_depth = pd.DataFrame({"Depth (m)": depths, "Temperature (°C)": temps, "Methane Pressure (PSI)": pressures})
     
-    # Subplot with secondary y-axis to fix ValueError
+    # Subplot with secondary y-axis
     fig_depth = make_subplots(specs=[[{"secondary_y": True}]])
     
     fig_depth.add_trace(
@@ -217,8 +217,10 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(orientation="h", y=1.12)
     )
-    fig_depth.update_yaxes(title_text="Temperature (°C)", titlefont=dict(color="#f43f5e"), secondary_y=False)
-    fig_depth.update_yaxes(title_text="Methane Pressure (PSI)", titlefont=dict(color="#38bdf8"), secondary_y=True)
+    
+    # FIXED: Updated title_font syntax (No deprecation/ValueError)
+    fig_depth.update_yaxes(title_text="Temperature (°C)", title_font=dict(color="#f43f5e"), secondary_y=False)
+    fig_depth.update_yaxes(title_text="Methane Pressure (PSI)", title_font=dict(color="#38bdf8"), secondary_y=True)
 
     st.plotly_chart(fig_depth, use_container_width=True)
 
