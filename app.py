@@ -286,11 +286,11 @@ if app_mode == "1. Live Autograd PINN Core Engine (Real Backprop)":
     st.plotly_chart(fig_depth, use_container_width=True)
 
 # ================================================================================
-# MODULE 2: GAUSSIAN DISPERSION HAZARD MAPPING
+# MODULE 2: GAUSSIAN DISPERSION HAZARD MAPPING (ACCURATE GEODESIC LAT/LON)
 # ================================================================================
 elif app_mode == "2. Gaussian Dispersion & Subsurface Hazard Mapping":
     st.markdown('### 💥 Atmospheric Gaussian Plume Dispersion Map')
-    st.caption("Gaussian plume modeling using wind shear vectors and subsurface gas pressure.")
+    st.caption("Accurate Geodesic Gaussian Plume Dispersion with Ground Zero Verification Pin.")
 
     selected_site = st.selectbox("Select Target Zone", list(LANDFILL_DATABASE.keys()))
     site_data = LANDFILL_DATABASE[selected_site]
@@ -298,36 +298,68 @@ elif app_mode == "2. Gaussian Dispersion & Subsurface Hazard Mapping":
     base_lat, base_lon = site_data["lat"], site_data["lon"]
     wind_angle = math.radians(site_data["wind_bearing"])
 
-    # Generate Plume Contour Grid Points
+    # Geodesic Lat/Lon Offset (1 degree ≈ 111,000 meters)
     plume_points = []
-    for distance in range(100, 1500, 100):
-        lat_p = base_lat + (distance * 0.00001 * math.cos(wind_angle))
-        lon_p = base_lon + (distance * 0.00001 * math.sin(wind_angle))
-        concentration = 1000 * math.exp(-distance / 400.0)
-        plume_points.append({"lat": lat_p, "lon": lon_p, "conc": concentration})
+    for distance_meters in range(30, 1500, 30):
+        delta_lat = (distance_meters * math.cos(wind_angle)) / 111000.0
+        delta_lon = (distance_meters * math.sin(wind_angle)) / (111000.0 * math.cos(math.radians(base_lat)))
+        
+        lat_p = base_lat + delta_lat
+        lon_p = base_lon + delta_lon
+        
+        concentration = 1000.0 * math.exp(-distance_meters / 400.0)
+        
+        plume_points.append({
+            "lat": lat_p, 
+            "lon": lon_p, 
+            "conc": concentration
+        })
 
     df_plume = pd.DataFrame(plume_points)
 
+    # Ground Zero Pin Layer
+    df_source = pd.DataFrame([{"lat": base_lat, "lon": base_lon, "name": selected_site}])
+    
+    layer_source_pin = pdk.Layer(
+        "ScatterplotLayer",
+        data=df_source,
+        get_position=["lon", "lat"],
+        get_color="[239, 68, 68, 255]",  # Solid Red Pin
+        get_radius=60,
+        pickable=True
+    )
+
+    # Plume Heatmap Layer
     layer_plume = pdk.Layer(
         "HeatmapLayer",
         data=df_plume,
         get_position=["lon", "lat"],
         get_weight="conc",
-        radiusPixels=60
+        radiusPixels=45,
+        intensity=1.2,
+        threshold=0.03
     )
 
-    view_state = pdk.ViewState(latitude=base_lat, longitude=base_lon, zoom=13.5, pitch=45)
+    view_state = pdk.ViewState(
+        latitude=base_lat, 
+        longitude=base_lon, 
+        zoom=14.5, 
+        pitch=30
+    )
+    
     st.pydeck_chart(pdk.Deck(
-        layers=[layer_plume],
+        layers=[layer_plume, layer_source_pin],
         initial_view_state=view_state,
-        tooltip={"text": "Methane Plume Intensity: {conc} ppm"}
+        tooltip={"text": "Ground Zero Source: {name}"}
     ))
 
 # ================================================================================
-# MODULE 3: PUBLIC API STREAM
+# MODULE 3: PLANETARY HEALTH INDEX (PHI) PUBLIC API
 # ================================================================================
 else:
     st.markdown("### 🌍 Public 'Planetary Health Index' (PHI) & Toxicity API")
+    st.caption("Live Climate Toxicity & Stability Score (0 to 100) driven by PINN Physics Inversion.")
+
     phi_list = []
     for k, v in LANDFILL_DATABASE.items():
         phi_list.append({
