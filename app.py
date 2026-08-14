@@ -4,12 +4,12 @@ import math
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
+from plotly.subplots import make_subplots
 import pydeck as pdk
 import streamlit as st
 import ee
 
-# --- PAGE CONFIGURATION (SatSure-Grade Enterprise Theme) ---
+# --- PAGE CONFIGURATION (Enterprise SatSure Dark Theme) ---
 st.set_page_config(
     page_title="ZeroWaste.AI — PINN Subsurface Methane Intelligence",
     page_icon="⚛️",
@@ -20,10 +20,8 @@ st.set_page_config(
 # --- RESPONSIVE HIGH-TECH DARK STYLING ---
 st.markdown("""
 <style>
-    /* Global Background */
     .stApp { background-color: #060911; color: #f1f5f9; font-family: 'Inter', -apple-system, sans-serif; }
     
-    /* Clean Responsive Headers */
     .brand-title {
         font-size: clamp(1.4rem, 2.5vw, 2.2rem);
         font-weight: 900;
@@ -39,7 +37,6 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* SatSure Glass Cards */
     .pinn-card {
         background: rgba(15, 23, 42, 0.8);
         border: 1px solid rgba(30, 41, 59, 0.8);
@@ -55,19 +52,18 @@ st.markdown("""
         letter-spacing: 0.05em;
     }
     .pinn-val {
-        font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+        font-size: clamp(1.1rem, 2.0vw, 1.7rem);
         font-weight: 800;
         color: #38bdf8;
         margin-top: 4px;
     }
     .pinn-formula {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         color: #a855f7;
         font-family: 'Courier New', monospace;
         margin-top: 4px;
     }
 
-    /* Equation Banner */
     .math-box {
         background: #0d1527;
         border-left: 4px solid #38bdf8;
@@ -78,7 +74,6 @@ st.markdown("""
         color: #e2e8f0;
     }
 
-    /* Hide Default Clutter */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -103,10 +98,26 @@ def init_ee():
 
 ee_active = init_ee()
 
-# --- SIDEBAR: MULTI-SENSOR SATELLITE ENGINE ---
+# --- PAN-INDIA LANDFILL DATASET ---
+LANDFILL_DATABASE = {
+    "Ghazipur Landfill (Delhi)": {"lat": 28.6289, "lon": 77.3275, "phi": 18, "status": "Severe Danger", "base_psi": 34.2, "sensor": "Sentinel-5P / InSAR"},
+    "Bhalswa Dump Yard (Delhi)": {"lat": 28.7367, "lon": 77.1633, "phi": 21, "status": "Severe Danger", "base_psi": 31.8, "sensor": "Sentinel-5P / InSAR"},
+    "Okhla Dump Site (Delhi)": {"lat": 28.5308, "lon": 77.2753, "phi": 25, "status": "High Hazard", "base_psi": 29.5, "sensor": "Sentinel-5P / EMIT"},
+    "Deonar Dump Yard (Mumbai)": {"lat": 19.0628, "lon": 72.9231, "phi": 22, "status": "Severe Danger", "base_psi": 33.1, "sensor": "GHGSat / ECOSTRESS"},
+    "Kanjurmarg Landfill (Mumbai)": {"lat": 19.1351, "lon": 72.9392, "phi": 38, "status": "Moderate Hazard", "base_psi": 19.4, "sensor": "GHGSat / Sentinel-1"},
+    "Pirana Landfill (Ahmedabad)": {"lat": 22.9812, "lon": 72.5804, "phi": 24, "status": "High Hazard", "base_psi": 28.5, "sensor": "Sentinel-5P / EMIT"},
+    "Dhapa Dump Yard (Kolkata)": {"lat": 22.5448, "lon": 88.4118, "phi": 27, "status": "High Hazard", "base_psi": 26.8, "sensor": "Sentinel-5P / S1"},
+    "Perungudi Dump Yard (Chennai)": {"lat": 12.9554, "lon": 80.2371, "phi": 30, "status": "Moderate Hazard", "base_psi": 23.4, "sensor": "ECOSTRESS / S5P"},
+    "Mavallipura / Mandur Yard (Bengaluru)": {"lat": 13.1231, "lon": 77.5451, "phi": 35, "status": "Moderate Hazard", "base_psi": 20.8, "sensor": "GHGSat / S1"},
+    "Jawaharnagar Yard (Hyderabad)": {"lat": 17.5183, "lon": 78.5832, "phi": 32, "status": "Moderate Hazard", "base_psi": 22.0, "sensor": "Sentinel-5P / InSAR"},
+    "Devguradia Dump Yard (Indore)": {"lat": 22.6841, "lon": 75.9221, "phi": 78, "status": "High Remediation / Safe", "base_psi": 5.2, "sensor": "Multi-Spectral S2"},
+    "Bhilai-Durg Industrial Belt (Chhattisgarh)": {"lat": 21.1938, "lon": 81.3509, "phi": 64, "status": "Moderate Stability", "base_psi": 11.4, "sensor": "Sentinel-5P / S1"}
+}
+
+# --- SIDEBAR CONTROL PANEL ---
 st.sidebar.markdown("### 🛰️ Satellites Engaged")
 st.sidebar.markdown("""
-- **Sentinel-5P** *(TROPOMI Sensor)*
+- **Sentinel-5P** *(TROPOMI Methane)*
 - **GHGSat** *(Point-Source Plume)*
 - **NASA ECOSTRESS** *(Thermal IR)*
 - **NASA EMIT** *(Spectroscopy)*
@@ -130,16 +141,15 @@ else:
 
 # --- MAIN BRAND HEADER ---
 st.markdown('<div class="brand-title">ZeroWaste.AI — Physics-Informed Subsurface Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="brand-sub">SatSure-Grade Earth Observation Platform with Inverse PINN Depth Sensing & InSAR Radar Displacements</div>', unsafe_allow_html=True)
+st.markdown('<div class="brand-sub">SatSure-Grade Earth Observation Platform with Inverse PINN Depth Sensing & Pan-India InSAR Radar Tracking</div>', unsafe_allow_html=True)
 
 # ================================================================================
-# MODULE 1: INVERSE PINN CORE ENGINE (15M DEPTH REALITY)
+# MODULE 1: INVERSE PINN CORE ENGINE
 # ================================================================================
 if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
     st.markdown("### ⚛️ Inverse Physics-Informed Neural Network (PINN) Core Engine")
-    st.caption("Resolving 15m deep subsurface temperature, methane PSI pressure, and permeability using multi-sensor satellite fusion without ground sensors.")
+    st.caption("Resolving 15m deep subsurface temperature, methane PSI pressure, and permeability across Indian landfills.")
 
-    # Mathematical Formula Banner
     st.markdown("""
     <div class="math-box">
         <b>Multi-Physics Fusion Loss Matrix:</b><br>
@@ -149,44 +159,46 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
     </div>
     """, unsafe_allow_html=True)
 
-    # PINN Dynamic Controls
     col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
-    target_site = col_ctrl1.selectbox("Target Dump Site / Industrial Zone", [
-        "Ghazipur Landfill (Delhi)", 
-        "Pirana Dump Yard (Ahmedabad)", 
-        "Deonar Landfill (Mumbai)", 
-        "Durg-Rajnandgaon Yard (Chhattisgarh)"
-    ])
+    target_site_name = col_ctrl1.selectbox("Target Dump Site / Zone (Pan-India)", list(LANDFILL_DATABASE.keys()))
     depth_target = col_ctrl2.slider("Calibrated Subsurface Depth (Meters)", 1, 20, 15)
     insar_swelling_mm = col_ctrl3.slider("InSAR Measured Ground Swell (mm)", 0.0, 15.0, 4.2)
 
-    # Core Physics Calculations (Inverse PINN Logic)
-    alpha = 0.12  # Compaction coefficient
-    beta = 0.45   # Moisture-thermal coupling factor
-    k0 = 1.8      # Base material thermal impedance
+    site_info = LANDFILL_DATABASE[target_site_name]
+
+    # Physics Calculation
+    alpha = 0.12
+    beta = 0.45
+    k0 = 1.8
 
     kz_calculated = k0 * math.exp(alpha * depth_target) * (1 + beta * (insar_swelling_mm / 10.0))
-    subsurface_psi = round(12.5 + (insar_swelling_mm * 4.8) + (depth_target * 0.85), 2)
-    core_temp_c = round(38.0 + (insar_swelling_mm * 6.2) + (depth_target * 1.4), 1)
+    subsurface_psi = round(site_info["base_psi"] + (insar_swelling_mm * 1.8) + (depth_target * 0.45), 2)
+    core_temp_c = round(38.0 + (insar_swelling_mm * 3.2) + (depth_target * 1.6), 1)
 
-    # Top Metric Display
     m1, m2, m3, m4 = st.columns(4)
     m1.markdown(f'<div class="pinn-card"><div class="pinn-label">Core Temp @ {depth_target}m (Fourier)</div><div class="pinn-val" style="color:#f43f5e;">{core_temp_c} °C</div><div class="pinn-formula">q = -K · ∇T</div></div>', unsafe_allow_html=True)
     m2.markdown(f'<div class="pinn-card"><div class="pinn-label">Subsurface Pressure (Darcy)</div><div class="pinn-val" style="color:#38bdf8;">{subsurface_psi} PSI</div><div class="pinn-formula">q_g = -(K/μ) · ∇P</div></div>', unsafe_allow_html=True)
     m3.markdown(f'<div class="pinn-card"><div class="pinn-label">Thermal Conductivity (K_z)</div><div class="pinn-val" style="color:#a855f7;">{round(kz_calculated, 3)}</div><div class="pinn-formula">Tensor Mech</div></div>', unsafe_allow_html=True)
-    m4.markdown(f'<div class="pinn-card"><div class="pinn-label">Virtual Pressure Gauge</div><div class="pinn-val" style="color:#10b981;">HARDWARE KILLED</div><div class="pinn-formula">Sat Radar Active</div></div>', unsafe_allow_html=True)
+    m4.markdown(f'<div class="pinn-card"><div class="pinn-label">Hardware Radar Gauge</div><div class="pinn-val" style="color:#10b981;">{site_info["sensor"].split("/")[0]}</div><div class="pinn-formula">Sat Active</div></div>', unsafe_allow_html=True)
 
-    # Depth Profile Chart
     st.markdown("#### 📉 Subsurface Depth Profile (0m to 20m Inversion)")
     depths = np.linspace(0, 20, 50)
-    temps = 30 + (insar_swelling_mm * 3.0) + (depths * 2.2) + (np.sin(depths) * 2.0)
-    pressures = 2 + (insar_swelling_mm * 2.5) + (depths * 1.6)
+    temps = 30 + (insar_swelling_mm * 2.0) + (depths * 2.5)
+    pressures = (site_info["base_psi"] * 0.3) + (insar_swelling_mm * 1.2) + (depths * 1.4)
 
     df_depth = pd.DataFrame({"Depth (m)": depths, "Temperature (°C)": temps, "Methane Pressure (PSI)": pressures})
     
-    fig_depth = go.Figure()
-    fig_depth.add_trace(go.Scatter(x=df_depth["Depth (m)"], y=df_depth["Temperature (°C)"], name="Temp Profile (°C)", line=dict(color="#f43f5e", width=3)))
-    fig_depth.add_trace(go.Scatter(x=df_depth["Depth (m)"], y=df_depth["Methane Pressure (PSI)"], name="Pressure Profile (PSI)", yaxis="y2", line=dict(color="#38bdf8", width=3, dash="dash")))
+    # --- FIXED PLOTLY SUBPLOT ISSUE HERE ---
+    fig_depth = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    fig_depth.add_trace(
+        go.Scatter(x=df_depth["Depth (m)"], y=df_depth["Temperature (°C)"], name="Temp Profile (°C)", line=dict(color="#f43f5e", width=3)),
+        secondary_y=False
+    )
+    fig_depth.add_trace(
+        go.Scatter(x=df_depth["Depth (m)"], y=df_depth["Methane Pressure (PSI)"], name="Pressure Profile (PSI)", line=dict(color="#38bdf8", width=3, dash="dash")),
+        secondary_y=True
+    )
     
     fig_depth.update_layout(
         template="plotly_dark",
@@ -194,9 +206,11 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
         margin=dict(l=20, r=20, t=30, b=20),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(title="Temperature (°C)", titlefont=dict(color="#f43f5e")),
-        yaxis2=dict(title="Methane PSI", titlefont=dict(color="#38bdf8"), overlaying="y", side="right")
+        legend=dict(orientation="h", y=1.1)
     )
+    fig_depth.update_yaxes(title_text="Temperature (°C)", titlefont=dict(color="#f43f5e"), secondary_y=False)
+    fig_depth.update_yaxes(title_text="Methane PSI", titlefont=dict(color="#38bdf8"), secondary_y=True)
+
     st.plotly_chart(fig_depth, use_container_width=True)
 
 # ================================================================================
@@ -204,19 +218,21 @@ if app_mode == "1. Inverse PINN Core Engine (15m Depth Physics)":
 # ================================================================================
 elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
     st.markdown("### 💥 Landfill Subsurface Stability Score (LSSS) & Blast Prediction")
-    st.caption("Sentinel-1 Radar InSAR tracking millimeter-level ground swelling/sinking & adjacent blast impact mapping.")
+    st.caption("Sentinel-1 Radar InSAR tracking ground swelling/sinking & adjacent blast impact mapping.")
+
+    selected_site = st.selectbox("Select Target Landfill Site for Blast Risk Analysis", list(LANDFILL_DATABASE.keys()))
+    site_data = LANDFILL_DATABASE[selected_site]
 
     l1, l2, l3 = st.columns(3)
-    l1.metric("Current LSSS Risk Index", "84 / 100", delta="HIGH BLAST RISK", delta_color="inverse")
+    risk_score = 100 - site_data["phi"]
+    l1.metric("LSSS Risk Index", f"{risk_score} / 100", delta="HIGH BLAST RISK" if risk_score > 60 else "MODERATE", delta_color="inverse")
     l2.metric("InSAR Displacement Rate", "+4.2 mm / 5-days", delta="Swelling Detected")
-    l3.metric("Auto Suction Drill Guidance", "Depth: 14.2m | Vector: 28° N", delta="Target Pinpointed")
+    l3.metric("Auto Suction Drill Vector", "Depth: 14.2m | Vector: 28° N", delta="Target Pinpointed")
 
     st.markdown("---")
-    st.markdown("#### 🗺️ Chain Reaction Hazard & Blast Impact Radius Map")
-    st.caption("Predicting toxic plume direction and blast impact on nearby residential colonies, chemical pipelines, and high-voltage power lines.")
+    st.markdown(f"#### 🗺️ Chain Reaction Hazard & Blast Impact Radius ({selected_site})")
 
-    # Spatial Deck with Radial Hazard Circles
-    base_lat, base_lon = 28.6289, 77.3275  # Ghazipur Example
+    base_lat, base_lon = site_data["lat"], site_data["lon"]
     
     blast_radius_df = pd.DataFrame([
         {"lat": base_lat, "lon": base_lon, "radius": 400, "type": "Ground Zero Blast Radius"},
@@ -228,15 +244,15 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
         "ScatterplotLayer",
         data=blast_radius_df,
         get_position=["lon", "lat"],
-        get_color="[244, 63, 94, 120]",
+        get_color="[244, 63, 94, 110]",
         get_radius="radius",
         pickable=True
     )
 
     infra_df = pd.DataFrame([
-        {"lat": base_lat + 0.004, "lon": base_lon + 0.003, "name": "Residential Colony A", "risk": "CRITICAL"},
-        {"lat": base_lat - 0.005, "lon": base_lon + 0.002, "name": "Underground Gas Pipeline", "risk": "EXTREME HAZARD"},
-        {"lat": base_lat + 0.002, "lon": base_lon - 0.006, "name": "High Voltage Power Grid", "risk": "HIGH RISK"}
+        {"lat": base_lat + 0.004, "lon": base_lon + 0.003, "name": "Nearby Dense Settlement", "risk": "CRITICAL"},
+        {"lat": base_lat - 0.005, "lon": base_lon + 0.002, "name": "Underground Gas / Power Lines", "risk": "EXTREME HAZARD"},
+        {"lat": base_lat + 0.002, "lon": base_lon - 0.006, "name": "Water Reservoir Buffer", "risk": "HIGH RISK"}
     ])
 
     layer_infra = pdk.Layer(
@@ -248,36 +264,32 @@ elif app_mode == "2. Landfill Subsurface Stability & Blast Prediction (LSSS)":
         pickable=True
     )
 
-    view_state = pdk.ViewState(latitude=base_lat, longitude=base_lon, zoom=12.8, pitch=45)
+    view_state = pdk.ViewState(latitude=base_lat, longitude=base_lon, zoom=12.2, pitch=45)
     st.pydeck_chart(pdk.Deck(
         layers=[layer_hazards, layer_infra],
         initial_view_state=view_state,
-        tooltip={"text": "Hazard/Asset: {name}\nBlast Impact Status: {risk}"}
+        tooltip={"text": "Hazard / Buffer: {name}\nStatus: {risk}"}
     ))
-
-    # Suction Drill Protocol
-    st.markdown("""
-    > 🎯 **Automated Suction Drill Guidance Protocol Issued:**
-    > To prevent catastrophe, Methane Gas must be safely extracted at **Target Depth: 14.2m** before internal PSI exceeds **35.0 PSI** limit. Zero Pollution Extraction System Ready.
-    """)
 
 # ================================================================================
 # MODULE 3: PLANETARY HEALTH INDEX (PHI) PUBLIC API
 # ================================================================================
 else:
     st.markdown("### 🌍 Public 'Planetary Health Index' (PHI) & Toxicity API")
-    st.caption("Live Climate Toxicity & Stability Score (0 to 100) displaying real-time planetary health for cities and industrial dump yards globally.")
+    st.caption("Live Climate Toxicity & Stability Score displaying planetary health for major Indian Landfills.")
 
-    # PHI City Table
-    phi_data = pd.DataFrame([
-        {"City / Dumpyard Zone": "Ghazipur Yard (Delhi)", "PHI Score": 18, "Toxicity Status": "Severe Danger", "Methane PSI": "34.2 PSI", "Primary Sensor": "Sentinel-5P / InSAR"},
-        {"City / Dumpyard Zone": "Pirana Site (Ahmedabad)", "PHI Score": 24, "Toxicity Status": "High Hazard", "Methane PSI": "28.5 PSI", "Primary Sensor": "Sentinel-5P / EMIT"},
-        {"City / Dumpyard Zone": "Deonar Yard (Mumbai)", "PHI Score": 31, "Toxicity Status": "Moderate Hazard", "Methane PSI": "22.1 PSI", "Primary Sensor": "GHGSat / ECOSTRESS"},
-        {"City / Dumpyard Zone": "Bhilai-Durg Industrial Belt", "PHI Score": 64, "Toxicity Status": "Moderate Stability", "Methane PSI": "11.4 PSI", "Primary Sensor": "Sentinel-5P / S1"},
-        {"City / Dumpyard Zone": "Reimaged Clean Grid (Zurich)", "PHI Score": 92, "Toxicity Status": "Optimal Health", "Methane PSI": "0.8 PSI", "Primary Sensor": "Multi-Spectral"}
-    ])
+    phi_list = []
+    for k, v in LANDFILL_DATABASE.items():
+        phi_list.append({
+            "City / Dumpyard Zone": k,
+            "PHI Score": v["phi"],
+            "Toxicity Status": v["status"],
+            "Methane PSI": f"{v['base_psi']} PSI",
+            "Primary Sensor": v["sensor"]
+        })
 
-    st.dataframe(phi_data, use_container_width=True, hide_index=True)
+    phi_df = pd.DataFrame(phi_list)
+    st.dataframe(phi_df, use_container_width=True, hide_index=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("#### 📡 Real-Time Global PHI API Endpoint Stream")
