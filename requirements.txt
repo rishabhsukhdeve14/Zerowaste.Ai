@@ -11,3 +11,4 @@ pydeck
 streamlit_autorefresh
 h3
 scipy
+torch
