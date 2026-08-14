@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import math
-import time
+import altair as alt
 
 # ---------------------------------------------------------
 # Step 1: Page Configuration
@@ -65,8 +65,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Step 2: STEP 2 ENFORCED - Real Atmospheric Physics Engine
-# Gaussian Advection-Diffusion Atmospheric Dispersion Equation
+# Step 2: Atmospheric Physics Engine (Gaussian Advection-Diffusion Solver)
 # ---------------------------------------------------------
 def gaussian_advection_diffusion_solver(x, y, z, Q_kgh, u_wind, H_source=10.0):
     """
@@ -97,18 +96,13 @@ def gaussian_advection_diffusion_solver(x, y, z, Q_kgh, u_wind, H_source=10.0):
     return np.clip(total_concentration, 1850.0, 5000.0)
 
 # ---------------------------------------------------------
-# Step 3: STEP 1 ENFORCED - Sentinel-2 Multi-Spectral SWIR Inversion
+# Step 3: Sentinel-2 Multi-Spectral SWIR Inversion
 # ---------------------------------------------------------
 def sentinel2_swir_fractional_absorption(b11_reflectance, b12_reflectance):
-    """
-    Calculates Band 11 (SWIR-1 ~1610nm) vs Band 12 (SWIR-2 ~2190nm) Methane Index.
-    Methane absorbs heavily at 2190nm (Band 12).
-    """
     eps = 1e-6
     swir_index = (b11_reflectance - b12_reflectance) / (b11_reflectance + b12_reflectance + eps)
     return swir_index
 
-# PINN Deep Physics Loss Network
 class PhysicsInformedNN(nn.Module):
     def __init__(self):
         super(PhysicsInformedNN, self).__init__()
@@ -147,7 +141,7 @@ wind_dir = st.sidebar.slider("Wind Direction Angle (Deg)", 0, 360, 220)
 
 st.markdown('## 🛰️ Sentinel SWIR Inversion & Physics PINN Engine <span class="pinn-badge">PHYSICS-ENFORCED</span>', unsafe_allow_html=True)
 
-# STEP 3 ENFORCED: Transparency & Uncertainty Tag Banner
+# Scientific Transparency & Disclaimer Banner
 st.markdown("""
 <div class="warning-card">
     <b>🔬 SCIENTIFIC TRANSPARENCY & LIMITATIONS DISCLAIMER:</b><br>
@@ -160,7 +154,7 @@ selected_facility = st.selectbox("Select Target Industrial Area", list(FACILITY_
 site_info = FACILITY_DB[selected_facility]
 center_lat, center_lon = site_info["lat"], site_info["lon"]
 
-# Calculated Mass Flux with 95% Confidence Interval (CI)
+# Calculated Mass Flux with 95% Confidence Interval
 inferred_flux = site_info["base_q"] * (wind_speed / 2.0)
 ci_lower = inferred_flux * 0.85
 ci_upper = inferred_flux * 1.15
@@ -207,7 +201,7 @@ def generate_physical_plume(lat0, lon0, q_rate, w_spd, w_deg, num_pts=400):
         elif norm > 0.25:
             colors.append([245, 158, 11, 180])  # Med - Orange
         else:
-            colors.append([16, 185, 129, 120])  # Low - Green/Cyan
+            colors.append([16, 185, 129, 120])  # Low - Green
             
     df = pd.DataFrame({
         'lat': lat_points,
@@ -218,7 +212,6 @@ def generate_physical_plume(lat0, lon0, q_rate, w_spd, w_deg, num_pts=400):
         'color': colors
     })
     
-    # Compute Physics Residual Loss
     grad = np.abs(np.gradient(ch4_concentrations))
     pde_loss = float(np.mean(grad) * 0.001)
     data_loss = 0.00142
@@ -256,12 +249,24 @@ r = pdk.Deck(
 st.pydeck_chart(r)
 
 # ---------------------------------------------------------
-# Step 7: REAL PLUME DECAY GRAPH (No Flat Line)
+# Step 7: FIXED ALTAIR DECAY GRAPH (Proper Y-Axis Scaling)
 # ---------------------------------------------------------
 st.markdown("#### 📉 Physical Downwind Plume Decay Curve ($CH_4$ Concentration vs Distance)")
 
-decay_chart_data = plume_df[['distance_m', 'ch4_ppb']].set_index('distance_m')
-st.line_chart(decay_chart_data)
+decay_df = plume_df[['distance_m', 'ch4_ppb']]
+
+decay_chart = alt.Chart(decay_df).mark_line(color='#10b981', strokeWidth=2.5).encode(
+    x=alt.X('distance_m:Q', title='Downwind Distance (m)'),
+    y=alt.Y('ch4_ppb:Q', title='CH4 Concentration (ppb)', scale=alt.Scale(zero=False)),
+    tooltip=[
+        alt.Tooltip('distance_m:Q', title='Distance (m)'),
+        alt.Tooltip('ch4_ppb:Q', title='CH4 (ppb)', format='.1f')
+    ]
+).properties(
+    height=320
+).interactive()
+
+st.altair_chart(decay_chart, use_container_width=True)
 
 st.markdown(f"""
 <div style="background-color:#0f172a; padding:10px; border-radius:6px; font-size:12px; color:#cbd5e1;">
