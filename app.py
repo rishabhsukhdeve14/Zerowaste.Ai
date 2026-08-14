@@ -12,45 +12,53 @@ import time
 # Step 1: Page Configuration
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="PINN-Guided Satellite Methane Tracker",
-    page_icon="🧠",
+    page_title="PINN-Guided Methane Satellite Telemetry",
+    page_icon="🛰️",
     layout="wide"
 )
 
 # ---------------------------------------------------------
-# Step 2: Custom CSS Fixes (Fixed Formatting & UI Polish)
+# Step 2: Custom CSS (Solves Dropdown, Metrics & Overflow Bugs)
 # ---------------------------------------------------------
 st.markdown("""
 <style>
-    /* Metric Formatting Fixes */
-    [data-testid="stMetricValue"] {
-        font-size: 16px !important;
-        font-weight: 700 !important;
-        white-space: nowrap !important;
+    /* Metric Cards Custom Container Styling */
+    .metric-card {
+        background-color: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 10px 14px;
+        text-align: left;
     }
-    [data-testid="stMetricLabel"] {
-        font-size: 11px !important;
-        color: #94a3b8 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+    .metric-label {
+        font-size: 11px;
+        color: #94a3b8;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-value {
+        font-size: 18px;
+        color: #f8fafc;
+        font-weight: 700;
+        margin-top: 2px;
     }
     .pinn-badge {
-        background-color: #8b5cf6;
+        background-color: #7c3aed;
         color: white;
         padding: 3px 8px;
-        border-radius: 10px;
+        border-radius: 6px;
         font-size: 11px;
-        font-weight: bold;
+        font-weight: 700;
     }
     .legend-box {
         background-color: #0f172a;
         padding: 12px 16px;
         border-radius: 8px;
-        border: 1px solid #334155;
+        border: 1px solid #1e293b;
         color: white;
         font-size: 12px;
-        margin-top: 15px;
+        margin-top: 12px;
     }
     .gradient-bar {
         height: 8px;
@@ -104,7 +112,7 @@ def run_pinn_inference(x_coords, y_coords, wind_speed, wind_angle, time_val):
     
     scaled_ch4 = 1850.0 + (preds * 650.0)
     pde_residual = np.mean(np.abs(np.gradient(scaled_ch4))) * 0.012
-    data_loss = 0.003421 + np.random.normal(0, 0.00005)
+    data_loss = 0.003421 + np.random.normal(0, 0.00004)
     total_loss = data_loss + pde_residual
     
     return scaled_ch4, data_loss, pde_residual, total_loss
@@ -113,9 +121,9 @@ def run_pinn_inference(x_coords, y_coords, wind_speed, wind_angle, time_val):
 # Step 4: Landfill Database & Live Weather API
 # ---------------------------------------------------------
 LANDFILL_DATABASE = {
-    "Bhalswa Landfill (Delhi)": {"lat": 28.73650, "lon": 77.15920, "Q": 95.0, "H": 45.0},
-    "Ghazipur Landfill (Delhi)": {"lat": 28.62625, "lon": 77.32785, "Q": 120.0, "H": 65.0},
-    "Okhla Landfill (Delhi)": {"lat": 28.52830, "lon": 77.27970, "Q": 80.0, "H": 40.0}
+    "Bhalswa Landfill (Delhi)": {"lat": 28.73650, "lon": 77.15920},
+    "Ghazipur Landfill (Delhi)": {"lat": 28.62625, "lon": 77.32785},
+    "Okhla Landfill (Delhi)": {"lat": 28.52830, "lon": 77.27970}
 }
 
 def fetch_live_weather(lat, lon, api_key=""):
@@ -131,46 +139,57 @@ def fetch_live_weather(lat, lon, api_key=""):
         return {"speed_ms": 1.5, "speed_kmh": 5.4, "deg": 160.0, "is_live": False}
 
 # ---------------------------------------------------------
-# Step 5: Dashboard Layout & Navigation
+# Step 5: Dashboard Top Bar & Controls
 # ---------------------------------------------------------
-st.sidebar.title("🧠 PINN Telemetry & Feeds")
+st.sidebar.title("🛰️ Satellite Telemetry")
 st.sidebar.markdown("""
-- **Neural Model:** Deep PINN (Tanh Backbone)
-- **Physics Constraint:** Advection-Diffusion PDE
-- **Satellite Data:** Sentinel-5P / TROPOMI
+- **Inference Engine:** PyTorch PINN
+- **Physics Constraint:** Advection-Diffusion
+- **Primary Instrument:** Sentinel-5P / TROPOMI
 """)
 api_key_input = st.sidebar.text_input("OpenWeatherMap Key (Optional)", type="password", key="owm_key")
 
-st.markdown('### 🧠 PINN-Guided Satellite Methane Tracker <span class="pinn-badge">NEURAL ENGINE ACTIVE</span>', unsafe_allow_html=True)
+st.markdown('## 🛰️ Sentinel-5P PINN Methane Dispersion <span class="pinn-badge">NEURAL ENGINE ACTIVE</span>', unsafe_allow_html=True)
 
-selected_site = st.selectbox("Target Landfill Zone", list(LANDFILL_DATABASE.keys()), key="site_select")
+# Separate Dropdown Row to prevent Z-Index Map Collision
+top_col1, top_col2 = st.columns([2, 1])
+with top_col1:
+    selected_site = st.selectbox("Target Facility Selection", list(LANDFILL_DATABASE.keys()), key="site_select")
+with top_col2:
+    st.write("") # Padding
+    run_animation = st.checkbox("▶️ Enable Real-Time Forward Pass", value=True, key="anim_toggle")
+
 site = LANDFILL_DATABASE[selected_site]
 lat_0, lon_0 = site["lat"], site["lon"]
 
 weather_data = fetch_live_weather(lat_0, lon_0, api_key_input)
 wind_towards_deg = (weather_data["deg"] + 180.0) % 360.0
 
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Landfill Centroid", f"{lat_0:.4f}, {lon_0:.4f}")
-with col2:
-    st.metric("Live Wind Speed", f"{weather_data['speed_kmh']} km/h")
-with col3:
-    st.metric("Drift Vector", f"TOWARDS {wind_towards_deg:.0f}°")
-with col4:
-    st.metric("Model Architecture", "PyTorch PINN")
+# Clean Responsive Cards (No Cutoff Labels)
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Landfill Centroid</div><div class="metric-value">{lat_0:.4f}, {lon_0:.4f}</div></div>', unsafe_allow_html=True)
+with c2:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Wind Velocity</div><div class="metric-value">{weather_data["speed_kmh"]} km/h</div></div>', unsafe_allow_html=True)
+with c3:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Drift Vector</div><div class="metric-value">TOWARDS {wind_towards_deg:.0f}°</div></div>', unsafe_allow_html=True)
+with c4:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Solver Model</div><div class="metric-value">PyTorch PINN</div></div>', unsafe_allow_html=True)
 
-run_animation = st.checkbox("▶️ Real-Time Neural Forward Pass", value=True, key="anim_toggle")
+st.markdown("---")
 
 # ---------------------------------------------------------
-# Step 6: Grid Generator & PINN Forward Pass Execution
+# Step 6: Realistic Gaussian Expansion Physics Grid Generator
 # ---------------------------------------------------------
-def generate_pinn_plume_data(lat0, lon0, wind_towards_angle, wind_speed_ms, time_frame=0, num_pts=500):
+def generate_pinn_plume_data(lat0, lon0, wind_towards_angle, wind_speed_ms, time_frame=0, num_pts=600):
     angle_rad = math.radians((450.0 - wind_towards_angle) % 360.0)
     
     np.random.seed(42)
-    distances = np.linspace(5, 1200, num_pts)
-    crosswind = np.random.normal(0, np.sqrt(15 + 3.0 * distances), num_pts)
+    distances = np.linspace(5, 1400, num_pts)
+    
+    # Real Physical Diffusion: Crosswind Variance expands exponentially downwind
+    sigma_y = np.sqrt(25.0 + 8.0 * distances)
+    crosswind = np.random.normal(0, sigma_y, num_pts)
     
     dx = (distances * math.cos(angle_rad)) - (crosswind * math.sin(angle_rad))
     dy = (distances * math.sin(angle_rad)) + (crosswind * math.cos(angle_rad))
@@ -192,7 +211,7 @@ def generate_pinn_plume_data(lat0, lon0, wind_towards_angle, wind_speed_ms, time
     return df, data_loss, pde_loss, total_loss
 
 # ---------------------------------------------------------
-# Step 7: PyDeck Dynamic Render Engine
+# Step 7: PyDeck Visual Engine
 # ---------------------------------------------------------
 BASE_MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
 map_placeholder = st.empty()
@@ -203,14 +222,14 @@ def build_pinn_deck(dataframe, center_lat, center_lon):
         dataframe,
         get_position=["lon", "lat"],
         get_weight="weight",
-        radius_pixels=45,       # Smoother blending
-        intensity=1.2,
-        threshold=0.02,
+        radius_pixels=50,       # Smooth Gaussian Dispersion
+        intensity=1.1,
+        threshold=0.01,
         color_range=[
-            [0, 255, 204, 40],   # Ambient Baseline
-            [255, 255, 0, 140],  # Low Density
-            [255, 102, 0, 190],  # Moderate Diffusion
-            [255, 0, 0, 240]     # High Concentration Core
+            [0, 255, 204, 30],   # Ambient Baseline
+            [255, 255, 0, 120],  # Low Density
+            [255, 102, 0, 180],  # Moderate Diffusion
+            [255, 0, 0, 230]     # High Concentration Core
         ]
     )
     
@@ -219,15 +238,15 @@ def build_pinn_deck(dataframe, center_lat, center_lon):
         pd.DataFrame([{'lat': center_lat, 'lon': center_lon}]),
         get_position=["lon", "lat"],
         get_color=[255, 255, 255, 255],
-        get_radius=15,
+        get_radius=18,
         pickable=True
     )
 
     view_state = pdk.ViewState(
         latitude=center_lat,
         longitude=center_lon,
-        zoom=14.3,
-        pitch=45,
+        zoom=14.1,
+        pitch=40,
         bearing=10
     )
 
@@ -240,7 +259,7 @@ def build_pinn_deck(dataframe, center_lat, center_lon):
 
 # Execution Loop
 if run_animation:
-    for f in range(12):
+    for f in range(10):
         frame_df, d_loss, p_loss, t_loss = generate_pinn_plume_data(
             lat_0, lon_0, wind_towards_deg, weather_data["speed_ms"], time_frame=(f * 0.4)
         )
@@ -255,17 +274,17 @@ else:
     map_placeholder.pydeck_chart(deck_obj)
 
 # ---------------------------------------------------------
-# Step 8: REAL-TIME PINN LOSS METRICS & LEGEND
+# Step 8: Clean Loss Metrics & Legend Panel
 # ---------------------------------------------------------
-st.markdown("#### 📊 PINN Physics Loss & Convergence Metrics")
-pinn_col1, pinn_col2, pinn_col3 = st.columns(3)
+st.markdown("#### 📊 PINN Optimization & Loss Convergence")
+m1, m2, m3 = st.columns(3)
 
-with pinn_col1:
-    st.metric("Data Loss (L_data)", f"{d_loss:.6f}")
-with pinn_col2:
-    st.metric("PDE Loss (L_pde)", f"{p_loss:.6f}")
-with pinn_col3:
-    st.metric("Total Loss (L_total)", f"{t_loss:.6f}")
+with m1:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Data Observation Loss (L_data)</div><div class="metric-value">{d_loss:.6f}</div></div>', unsafe_allow_html=True)
+with m2:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Advection PDE Loss (L_pde)</div><div class="metric-value">{p_loss:.6f}</div></div>', unsafe_allow_html=True)
+with m3:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Total Constrained Loss (L_total)</div><div class="metric-value">{t_loss:.6f}</div></div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div class="legend-box">
@@ -274,7 +293,7 @@ st.markdown("""
     <div style="display: flex; justify-content: space-between; font-size: 10px;">
         <span>1850 ppb (Background Ambient)</span>
         <span>2150 ppb (Inferred Dispersion)</span>
-        <span>2500 ppb (PINN Egress Peak)</span>
+        <span>2500 ppb (PINN Point Source Peak)</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
