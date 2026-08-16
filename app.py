@@ -182,6 +182,11 @@ st.info(
     "emission-rate, fire, slope-failure or emergency-response system."
 )
 
+st.markdown(
+    ''' <div class="card"> <b>🟢 ZeroWaste.AI engine online</b><br> <span class="muted"> Dashboard analytics are loaded from the built-in demonstration dataset until you upload your landfill CSV. Earth Engine satellite metadata is checked only when you press the S5P button in the sidebar. </span> </div> ''',
+    unsafe_allow_html=True,
+)
+
 
 # ============================================================
 # SIDEBAR
@@ -472,7 +477,10 @@ def ee_s5p_latest_info():
         return None
 
 
-latest_s5p = ee_s5p_latest_info()
+# Do not call Earth Engine automatically on every page load.
+# The dashboard must render its DEMO/UPLOAD analytics first.
+if "latest_s5p" not in st.session_state:
+    st.session_state.latest_s5p = None
 
 
 # ============================================================
@@ -610,23 +618,4 @@ def run_s5p_site_scoring(df, radius_km, days_recent, days_baseline):
             lambda x: anomaly_map.get(str(x), {}).get("ee_anomaly_mean")
         )
         out["ee_anomaly_max"] = out["name"].map(
-            lambda x: anomaly_map.get(str(x), {}).get("ee_anomaly_max")
-        )
-
-        return out, None
-
-    except Exception as exc:
-        return None, str(exc)
-
-
-if "ee_scored" not in st.session_state:
-    st.session_state.ee_scored = None
-if "ee_error" not in st.session_state:
-    st.session_state.ee_error = None
-
-
-st.sidebar.markdown("---")
-if mode == "EARTH ENGINE + UPLOAD" and EE_OK:
-    if st.sidebar.button("🛰️ Run S5P site scoring", use_container_width=True):
-        with st.spinner("Running Sentinel-5P site screening in Earth Engine..."):
-            scored, err
+            lambda x: anomaly_map.get(str(x), {}).get("ee_anom
