@@ -2,8 +2,6 @@ import streamlit as st
 import numpy as np
 import pydeck as pdk
 import pandas as pd
-import torch
-import torch.nn as nn
 import math
 import altair as alt
 import requests
@@ -65,15 +63,6 @@ st.markdown("""
         font-size: 11px;
         font-weight: 700;
     }
-    .core-card {
-        background-color: #020617;
-        border: 1px solid #3d0361;
-        border-radius: 8px;
-        padding: 12px 16px;
-        color: #e2e8f0;
-        font-size: 12px;
-        margin-bottom: 15px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,13 +100,13 @@ def biot_poromechanics_and_fire(moisture_sw, stress_sigma, ambient_temp):
     oxidation_factor = max(0.0, (0.35 - moisture_sw)) * 450.0 if moisture_sw < 0.35 else 0.0
     subsurface_core_temp = ambient_temp + (phi_t * 22.0) + (stress_sigma / 1e5 * 0.4) + oxidation_factor
     
-    # Absolute Time to Thermal Runaway / Blast Prediction
+    # Strict Absolute Positive Time Window (No Negative Glitches)
     if subsurface_core_temp > 72.0:
-        raw_hours = 48.0 - (subsurface_core_temp - 72.0) * 4.0
-        hours_to_fire = max(0.5, abs(raw_hours))
+        raw_hours = 48.0 - (subsurface_core_temp - 72.0) * 3.5
+        hours_to_fire = float(np.clip(abs(raw_hours), 0.8, 24.0))
         fire_risk_level = "CRITICAL 🚨 (IMMINENT SPONTANEOUS COMBUSTION)"
     elif subsurface_core_temp > 62.0:
-        hours_to_fire = abs(120.0 - (subsurface_core_temp - 62.0) * 6.0)
+        hours_to_fire = float(np.clip(abs(120.0 - (subsurface_core_temp - 62.0) * 5.0), 25.0, 96.0))
         fire_risk_level = "HIGH WARNING ⚠️"
     else:
         hours_to_fire = 720.0
@@ -203,23 +192,23 @@ with c4:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# Plume Simulation Pipeline (Strict Positive Spectrum)
+# Plume Simulation Pipeline (Clean Positive Spectrum & Smooth Decay)
 # ---------------------------------------------------------
 def build_uncopyable_plume(lat0, lon0, q_flux, w_s, w_d, num_pts=450):
     rad = math.radians((450.0 - w_d) % 360.0)
-    x = np.linspace(15, 1200, num_pts)
+    x = np.linspace(10, 1200, num_pts)
     np.random.seed(42)
-    y = np.abs(np.random.normal(0, np.sqrt(3.5 * x), num_pts))
-    z = np.minimum(8.0 + np.sqrt(x) * 3.8, 160.0)
+    y = np.abs(np.random.normal(0, np.sqrt(2.5 * x), num_pts))
+    z = np.minimum(6.0 + np.sqrt(x) * 3.2, 140.0)
     
-    sigma_y = np.maximum(0.08 * x * (1.0 + 0.0001 * x)**(-0.5), 2.0)
-    sigma_z = np.maximum(0.06 * x * (1.0 + 0.0015 * x)**(-0.5), 2.0)
+    sigma_y = np.maximum(0.09 * x * (1.0 + 0.0002 * x)**(-0.5), 2.0)
+    sigma_z = np.maximum(0.07 * x * (1.0 + 0.0012 * x)**(-0.5), 2.0)
     
     q_g_s = (q_flux * 1000.0) / 3600.0
     u_wind = max(w_s, 1.0)
     
     conc_g = (q_g_s / (2.0 * np.pi * u_wind * sigma_y * sigma_z)) * np.exp(-0.5 * (y / sigma_y)**2)
-    ch4_ppb = 1850.0 + np.clip(conc_g * 1.2e4, 0.0, 2350.0)
+    ch4_ppb = 1850.0 + np.clip(conc_g * 1.1e4, 0.0, 2400.0)
     
     dx = (x * math.cos(rad)) - (y * math.sin(rad))
     dy = (x * math.sin(rad)) + (y * math.cos(rad))
@@ -250,8 +239,8 @@ layer_3d = pdk.Layer(
     get_position=["lon", "lat"],
     get_elevation="elevation",
     get_fill_color="color",
-    radius=10,
-    elevation_scale=1.1,
+    radius=12,
+    elevation_scale=1.0,
     pickable=True
 )
 
