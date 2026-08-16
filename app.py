@@ -1,272 +1,689 @@
-import streamlit as st
-import numpy as np
-import pydeck as pdk
-import pandas as pd
-import math
-import altair as alt
-import requests
 
-# ---------------------------------------------------------
-# Step 1: UI & Page Config
-# ---------------------------------------------------------
+import math
+import json
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+# Optional packages. The app stays usable in DEMO/UPLOAD mode if these are missing.
+try:
+    import ee
+except Exception:
+    ee = None
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
+
+# ============================================================
+# ZERO WASTE.AI
+# Multi-Physics + Multi-Sensor Landfill Intelligence Dashboard
+#
+# IMPORTANT:
+# - Satellite observations are NOT continuous live sensors.
+# - Physics equations below are screening / modelling components.
+# - They do not constitute a certified emission rate, structural
+#   engineering report, fire prediction, or emergency instruction.
+# ============================================================
+
+APP_TITLE = "ZeroWaste.AI"
+PROJECT_ID = "stalwart-fx-490910-e3"
+
+# Earth Engine Sentinel-5P methane collection.
+S5P_COLLECTION = "COPERNICUS/S5P/OFFL/L3_CH4"
+
 st.set_page_config(
-    page_title="zerowaste.AI | Autonomous Thermal & Plume Engine",
+    page_title="ZeroWaste.AI",
     page_icon="🌍",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-    .metric-card {
-        background-color: #0f172a;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 12px 16px;
-        text-align: left;
-    }
-    .metric-label {
-        font-size: 11px;
-        color: #94a3b8;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .metric-value {
-        font-size: 16px;
+
+# ============================================================
+# STYLE
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: #030712;
         color: #f8fafc;
-        font-weight: 700;
-        margin-top: 2px;
     }
-    .fire-alert-card {
-        background-color: #450a0a;
-        border: 1px solid #ef4444;
-        border-radius: 8px;
-        padding: 14px 18px;
-        color: #fecaca;
-        font-size: 13px;
-        margin-bottom: 15px;
+    [data-testid="stSidebar"] {
+        background: #050b14;
     }
-    .safe-alert-card {
-        background-color: #064e3b;
-        border: 1px solid #10b981;
-        border-radius: 8px;
-        padding: 14px 18px;
-        color: #d1fae5;
-        font-size: 13px;
-        margin-bottom: 15px;
+    .hero {
+        font-size: 2.45rem;
+        line-height: 1.05;
+        font-weight: 900;
+        background: linear-gradient(90deg,#38bdf8,#00ff99,#f43f5e);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.15rem;
     }
-    .secret-badge {
-        background-color: #8b5cf6;
-        color: white;
-        padding: 3px 8px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 700;
+    .subhero {
+        color: #94a3b8;
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
     }
-</style>
-""", unsafe_allow_html=True)
+    .card {
+        background: rgba(15,23,42,.86);
+        border: 1px solid rgba(148,163,184,.15);
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+    .green {
+        color: #00ff99;
+        font-weight: 800;
+    }
+    .amber {
+        color: #fbbf24;
+        font-weight: 800;
+    }
+    .red {
+        color: #fb7185;
+        font-weight: 800;
+    }
+    .muted {
+        color: #94a3b8;
+    }
+    .tiny {
+        color: #64748b;
+        font-size: .75rem;
+    }
+    .section-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        margin-top: .4rem;
+        margin-bottom: .35rem;
+    }
+    .action {
+        background: rgba(127,29,29,.18);
+        border-left: 4px solid #fb7185;
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin: 8px 0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# ---------------------------------------------------------
-# Step 2: Live Weather Fetcher (Open-Meteo API)
-# ---------------------------------------------------------
-@st.cache_data(ttl=600)
-def fetch_live_weather(lat, lon):
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def clamp(x, lo=0.0, hi=100.0):
     try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m,wind_direction_10m"
-        res = requests.get(url, timeout=3).json()
-        current = res.get("current", {})
-        return {
-            "temp": current.get("temperature_2m", 38.0),
-            "wind_speed": current.get("wind_speed_10m", 3.2) / 3.6,
-            "wind_dir": current.get("wind_direction_10m", 220.0),
-            "status": "LIVE API SYNCED ✅"
-        }
+        return float(np.clip(float(x), lo, hi))
     except Exception:
-        return {"temp": 40.0, "wind_speed": 3.2, "wind_dir": 220.0, "status": "OFFLINE FALLBACK ⚠️"}
+        return float(lo)
 
-# ---------------------------------------------------------
-# Step 3: First-Principles Biot Poromechanics & Thermal Physics
-# ---------------------------------------------------------
-def biot_poromechanics_and_fire(moisture_sw, stress_sigma, ambient_temp):
-    phi_0 = 0.45
-    K_s = 1e7
-    alpha = 0.85
-    pore_pressure = 101325 + (moisture_sw * 1000 * 9.81 * 10)
-    
-    # Biot's Dynamic Porosity Coupling
-    phi_t = 1.0 - (1.0 - phi_0) * np.exp(-(stress_sigma - alpha * pore_pressure) / K_s)
-    
-    # Thermodynamic Exothermic Heat Accumulation
-    oxidation_factor = max(0.0, (0.35 - moisture_sw)) * 450.0 if moisture_sw < 0.35 else 0.0
-    subsurface_core_temp = ambient_temp + (phi_t * 22.0) + (stress_sigma / 1e5 * 0.4) + oxidation_factor
-    
-    # Strict Absolute Positive Time Window (No Negative Glitches)
-    if subsurface_core_temp > 72.0:
-        raw_hours = 48.0 - (subsurface_core_temp - 72.0) * 3.5
-        hours_to_fire = float(np.clip(abs(raw_hours), 0.8, 24.0))
-        fire_risk_level = "CRITICAL 🚨 (IMMINENT SPONTANEOUS COMBUSTION)"
-    elif subsurface_core_temp > 62.0:
-        hours_to_fire = float(np.clip(abs(120.0 - (subsurface_core_temp - 62.0) * 5.0), 25.0, 96.0))
-        fire_risk_level = "HIGH WARNING ⚠️"
-    else:
-        hours_to_fire = 720.0
-        fire_risk_level = "STABLE / CONTROLLED ✅"
-        
-    q_methane = 0.085 * np.exp(0.05 * (subsurface_core_temp - 25.0)) * phi_t * 1200.0
-    return q_methane, phi_t, subsurface_core_temp, hours_to_fire, fire_risk_level
 
-# ---------------------------------------------------------
-# Step 4: Quantum SWIR & ETKF Data Assimilation
-# ---------------------------------------------------------
-def lblrtm_quantum_swir_inversion(raw_radiance, aerosol_tau):
-    sigma_ch4 = 1.45e-21
-    clean_rad = raw_radiance * np.exp(aerosol_tau)
-    retrieved = (np.log(2.1 / (clean_rad + 1e-6))) / (sigma_ch4 * 1e19)
-    return np.clip(retrieved, 1850.0, 4800.0)
+def safe_num(v, default=np.nan):
+    try:
+        if pd.isna(v):
+            return default
+        return float(v)
+    except Exception:
+        return default
 
-def etkf_data_assimilation_step(obs_ppb, background_ppb):
-    R_cov, P_f = 15.0, 45.0
-    K_gain = P_f / (P_f + R_cov)
-    return background_ppb + K_gain * (obs_ppb - background_ppb), K_gain
 
-# ---------------------------------------------------------
-# Facility DB & Sidebar Controls
-# ---------------------------------------------------------
-FACILITY_DB = {
-    "Okhla Landfill (Delhi)": {"lat": 28.52830, "lon": 77.27970, "stress": 2.5e6},
-    "Bhalswa Landfill (Delhi)": {"lat": 28.73650, "lon": 77.15920, "stress": 3.8e6},
-    "Ghazipur Landfill (Delhi)": {"lat": 28.62625, "lon": 77.32785, "stress": 4.2e6}
+def normalize_0_100(series, low=None, high=None):
+    s = pd.to_numeric(series, errors="coerce")
+    if low is None:
+        low = float(s.quantile(0.05)) if s.notna().any() else 0.0
+    if high is None:
+        high = float(s.quantile(0.95)) if s.notna().any() else 1.0
+    if not np.isfinite(low):
+        low = 0.0
+    if not np.isfinite(high) or high <= low:
+        high = low + 1.0
+    return ((s - low) / (high - low) * 100.0).clip(0, 100)
+
+
+def risk_label(score):
+    if not np.isfinite(score):
+        return "NO DATA"
+    if score >= 80:
+        return "CRITICAL"
+    if score >= 65:
+        return "HIGH"
+    if score >= 45:
+        return "ELEVATED"
+    return "LOW"
+
+
+def risk_symbol(label):
+    return {
+        "CRITICAL": "🔴",
+        "HIGH": "🟠",
+        "ELEVATED": "🟡",
+        "LOW": "🟢",
+        "NO DATA": "⚪",
+    }.get(label, "⚪")
+
+
+def finite_or_zero(x):
+    return float(x) if np.isfinite(x) else 0.0
+
+
+# ============================================================
+# EARTH ENGINE
+# ============================================================
+
+@st.cache_resource
+def init_earth_engine():
+    if ee is None:
+        return False, "earthengine-api is not installed."
+
+    try:
+        # Streamlit secrets format:
+        # [GCP_SERVICE_ACCOUNT]
+        # type = "service_account"
+        # project_id = "..."
+        # private_key_id = "..."
+        # private_key = "-----BEGIN PRIVATE KEY-----\\n..."
+        # client_email = "..."
+        # client_id = "..."
+        if "GCP_SERVICE_ACCOUNT" in st.secrets:
+            raw = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+            raw["private_key"] = raw["private_key"].replace("\\n", "\n")
+            credentials = ee.ServiceAccountCredentials(
+                raw["client_email"],
+                key_data=json.dumps(raw),
+            )
+            ee.Initialize(credentials=credentials, project=PROJECT_ID)
+        else:
+            ee.Initialize(project=PROJECT_ID)
+
+        return True, "Earth Engine connected."
+    except Exception as exc:
+        return False, str(exc)
+
+
+EE_OK, EE_MESSAGE = init_earth_engine()
+
+
+# ============================================================
+# OPTIONAL AUTO REFRESH
+# ============================================================
+
+if st_autorefresh is not None:
+    # UI refresh only. It does NOT create new satellite observations.
+    st_autorefresh(interval=10 * 60 * 1000, key="zerowaste_ui_refresh")
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="hero">ZERO WASTE.AI</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '<div class="subhero">Multi-sensor landfill intelligence • methane • thermal • '
+    'subsurface pressure proxies • deformation • plume transport • risk screening</div>',
+    unsafe_allow_html=True,
+)
+
+st.info(
+    "Scientific status: this dashboard separates measured/ingested observations from "
+    "derived physics and screening proxies. It must not be treated as a certified "
+    "emission-rate, fire, slope-failure or emergency-response system."
+)
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+st.sidebar.markdown("## ⚙️ ZeroWaste.AI Controls")
+
+mode = st.sidebar.radio(
+    "Data mode",
+    ["UPLOAD / DEMO", "EARTH ENGINE + UPLOAD"],
+    index=0 if not EE_OK else 1,
+)
+
+analysis_days = st.sidebar.slider(
+    "S5P recent window (days)",
+    min_value=3,
+    max_value=30,
+    value=7,
+)
+
+baseline_days = st.sidebar.slider(
+    "Methane baseline (days)",
+    min_value=30,
+    max_value=180,
+    value=60,
+)
+
+buffer_km = st.sidebar.slider(
+    "Landfill screening radius (km)",
+    min_value=0.5,
+    max_value=5.0,
+    value=2.0,
+    step=0.5,
+)
+
+forecast_years = st.sidebar.slider(
+    "Long-horizon scenario (years)",
+    min_value=1,
+    max_value=50,
+    value=10,
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🛰️ Sensor stack")
+
+sensor_status = {
+    "Sentinel-5P / TROPOMI": EE_OK,
+    "Sentinel-1 InSAR": False,
+    "Sentinel-2 MSI": False,
+    "NASA EMIT": False,
+    "ECOSTRESS": False,
+    "GHGSat": False,
 }
 
-st.sidebar.title("🛠️ zerowaste.AI Core")
-selected_facility = st.sidebar.selectbox("Select Target Waste Site", list(FACILITY_DB.keys()))
-site_data = FACILITY_DB[selected_facility]
+for sensor_name, connected in sensor_status.items():
+    st.sidebar.write(("🟢 " if connected else "⚪ ") + sensor_name)
 
-live_weather = fetch_live_weather(site_data["lat"], site_data["lon"])
-
-st.sidebar.markdown(f"**Weather Source:** `{live_weather['status']}`")
-sw_moisture = st.sidebar.slider("Subsurface Moisture Saturation (S_w)", 0.05, 0.95, 0.28)
-aerosol_opt_depth = st.sidebar.slider("Aerosol Optical Depth (\u03c4_aerosol)", 0.05, 0.50, 0.18)
-
-wind_spd = st.sidebar.slider("Live Ambient Wind Speed (m/s)", 0.5, 15.0, float(round(live_weather["wind_speed"], 1)))
-wind_dir = st.sidebar.slider("Live Wind Vector (\u00b0)", 0, 360, int(live_weather["wind_dir"]))
-
-# Execute Physics Engine
-sub_q, dyn_phi, core_temp, fire_hours, fire_status = biot_poromechanics_and_fire(
-    sw_moisture, site_data["stress"], live_weather["temp"]
-)
-quantum_obs = lblrtm_quantum_swir_inversion(0.82, aerosol_opt_depth)
-assimilated_ch4, kalman_gain = etkf_data_assimilation_step(quantum_obs, 1920.0)
-
-# Header & Banner
-st.markdown(f'## 🌍 zerowaste.AI Engine <span class="secret-badge">FIRST-PRINCIPLES THERMAL PHYSICS</span>', unsafe_allow_html=True)
-
-# Fire Prediction Alert Box
-if "CRITICAL" in fire_status or "HIGH" in fire_status:
-    st.markdown(f"""
-    <div class="fire-alert-card">
-        <b>🚨 PHYSICS-BASED THERMAL RUNAWAY & BLAST ALERT:</b><br>
-        • Biot Poromechanics Engine detected core temperature spike at <b>{selected_facility}</b>: <b>{core_temp:.1f}°C</b>.<br>
-        • Moisture Depletion: <b>{sw_moisture*100:.1f}%</b> | Pores Blocked & Pressure Trapped.<br>
-        • <b>Predicted Time to Spontaneous Combustion / Blast: ~{fire_hours:.1f} Hours</b>. Immediate action required!
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown(f"""
-    <div class="safe-alert-card">
-        <b>✅ SUBSURFACE THERMODYNAMICS STABLE:</b> Core temperature and moisture balance are within safe limits.<br>
-        • Core Temp: <b>{core_temp:.1f}°C</b> | Fire Window: <b>Stable (> 30 days)</b>.
-    </div>
-    """, unsafe_allow_html=True)
-
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Core Temp (°C)</div><div class="metric-value">{core_temp:.1f}°C</div></div>', unsafe_allow_html=True)
-with c2:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Blast Risk State</div><div class="metric-value" style="font-size:13px; color:#f87171;">{fire_status.split()[0]}</div></div>', unsafe_allow_html=True)
-with c3:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Assimilated CH4</div><div class="metric-value">{assimilated_ch4:.1f} ppb</div></div>', unsafe_allow_html=True)
-with c4:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Live Wind Vector</div><div class="metric-value">{wind_spd} m/s ({wind_dir}°)</div></div>', unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ---------------------------------------------------------
-# Plume Simulation Pipeline (Clean Positive Spectrum & Smooth Decay)
-# ---------------------------------------------------------
-def build_uncopyable_plume(lat0, lon0, q_flux, w_s, w_d, num_pts=450):
-    rad = math.radians((450.0 - w_d) % 360.0)
-    x = np.linspace(10, 1200, num_pts)
-    np.random.seed(42)
-    y = np.abs(np.random.normal(0, np.sqrt(2.5 * x), num_pts))
-    z = np.minimum(6.0 + np.sqrt(x) * 3.2, 140.0)
-    
-    sigma_y = np.maximum(0.09 * x * (1.0 + 0.0002 * x)**(-0.5), 2.0)
-    sigma_z = np.maximum(0.07 * x * (1.0 + 0.0012 * x)**(-0.5), 2.0)
-    
-    q_g_s = (q_flux * 1000.0) / 3600.0
-    u_wind = max(w_s, 1.0)
-    
-    conc_g = (q_g_s / (2.0 * np.pi * u_wind * sigma_y * sigma_z)) * np.exp(-0.5 * (y / sigma_y)**2)
-    ch4_ppb = 1850.0 + np.clip(conc_g * 1.1e4, 0.0, 2400.0)
-    
-    dx = (x * math.cos(rad)) - (y * math.sin(rad))
-    dy = (x * math.sin(rad)) + (y * math.cos(rad))
-    
-    lats = lat0 + (dy / 111000.0)
-    lons = lon0 + (dx / (111000.0 * math.cos(math.radians(lat0))))
-    
-    colors = []
-    for c in ch4_ppb:
-        norm = (c - 1850.0) / 2000.0
-        if norm > 0.5:
-            colors.append([239, 68, 68, 220])
-        elif norm > 0.2:
-            colors.append([245, 158, 11, 180])
-        else:
-            colors.append([16, 185, 129, 130])
-            
-    return pd.DataFrame({'lat': lats, 'lon': lons, 'elevation': z, 'ch4_ppb': ch4_ppb, 'distance_m': x, 'color': colors})
-
-plume_df = build_uncopyable_plume(site_data["lat"], site_data["lon"], sub_q, wind_spd, wind_dir)
-
-# ---------------------------------------------------------
-# 3D PyDeck Physics Map
-# ---------------------------------------------------------
-layer_3d = pdk.Layer(
-    "ColumnLayer",
-    plume_df,
-    get_position=["lon", "lat"],
-    get_elevation="elevation",
-    get_fill_color="color",
-    radius=12,
-    elevation_scale=1.0,
-    pickable=True
+st.sidebar.caption(
+    "Grey sensors can be activated through uploaded data or future connector modules. "
+    "The app never fabricates a connected satellite stream."
 )
 
-view_state = pdk.ViewState(
-    latitude=site_data["lat"], longitude=site_data["lon"],
-    zoom=14.5, pitch=52, bearing=15
+
+# ============================================================
+# DEMO DATA
+# ============================================================
+
+DEMO_ROWS = [
+    ["Ghazipur", "Delhi", 28.6231, 77.3288, 1928, 68, 58, 5.2, 1.8, 20, 62, 8.5, 2.1],
+    ["Bhalswa", "Delhi", 28.7410, 77.1517, 1916, 42, 51, 3.8, 1.3, 17, 55, 6.8, 1.7],
+    ["Okhla", "Delhi", 28.5303, 77.2789, 1909, 31, 45, 2.5, 1.0, 14, 49, 5.4, 1.2],
+    ["Deonar", "Maharashtra", 19.0573, 72.9304, 1932, 75, 63, 6.1, 2.6, 24, 70, 10.1, 2.8],
+    ["Mulund", "Maharashtra", 19.1678, 72.9567, 1888, 18, 28, 2.0, 0.8, 11, 37, 4.2, 1.1],
+    ["Pirana", "Gujarat", 22.9831, 72.5802, 1945, 55, 72, 5.5, 2.0, 22, 64, 9.0, 2.3],
+    ["Jawaharnagar", "Telangana", 17.5147, 78.5852, 1896, 36, 40, 3.1, 1.4, 18, 44, 5.8, 1.5],
+    ["Kodungaiyur", "Tamil Nadu", 13.1360, 80.2640, 1912, 49, 54, 4.0, 1.7, 20, 52, 7.0, 1.8],
+    ["Bidadi", "Karnataka", 12.7980, 77.3850, 1865, 11, 25, 1.7, 0.5, 9, 31, 3.5, 0.8],
+    ["Kanjikode", "Kerala", 10.7867, 76.6547, 1879, 16, 33, 2.2, 0.7, 12, 36, 4.8, 1.0],
+]
+
+DEMO_COLUMNS = [
+    "name", "state", "lat", "lon",
+    "methane_ppb", "methane_anomaly_ppb",
+    "thermal_anomaly_c", "deformation_mm_yr",
+    "moisture_pct", "pressure_psi",
+    "wind_mps", "wind_deg",
+]
+
+
+def load_site_data():
+    uploaded = st.sidebar.file_uploader(
+        "Upload landfill / sensor CSV",
+        type=["csv"],
+        help=(
+            "Recommended columns: name,lat,lon,state,methane_ppb,"
+            "methane_anomaly_ppb,thermal_anomaly_c,deformation_mm_yr,"
+            "moisture_pct,pressure_psi,wind_mps,wind_deg,area_ha,height_m,mass_mt"
+        ),
+    )
+
+    if uploaded is None:
+        return pd.DataFrame(DEMO_ROWS, columns=DEMO_COLUMNS), "DEMO DATA"
+
+    try:
+        df = pd.read_csv(uploaded)
+    except Exception as exc:
+        st.error(f"CSV could not be read: {exc}")
+        return pd.DataFrame(DEMO_ROWS, columns=DEMO_COLUMNS), "DEMO FALLBACK"
+
+    df.columns = [
+        str(c).strip().lower().replace(" ", "_").replace("-", "_")
+        for c in df.columns
+    ]
+
+    # Flexible aliases.
+    aliases = {
+        "longitude": "lon",
+        "lng": "lon",
+        "latitude": "lat",
+        "site": "name",
+        "landfill": "name",
+        "ch4": "methane_ppb",
+        "ch4_ppb": "methane_ppb",
+        "xch4": "methane_ppb",
+        "xch4_ppb": "methane_ppb",
+        "ch4_anomaly": "methane_anomaly_ppb",
+        "temp_anomaly": "thermal_anomaly_c",
+        "temperature_anomaly": "thermal_anomaly_c",
+        "insar_mm_yr": "deformation_mm_yr",
+        "subsidence_mm_yr": "deformation_mm_yr",
+        "moisture": "moisture_pct",
+        "pressure": "pressure_psi",
+        "wind_speed": "wind_mps",
+        "wind_speed_mps": "wind_mps",
+    }
+
+    for old, new in aliases.items():
+        if old in df.columns and new not in df.columns:
+            df[new] = df[old]
+
+    required = {"name", "lat", "lon"}
+    missing = required - set(df.columns)
+    if missing:
+        st.error(
+            "CSV is missing required columns: "
+            + ", ".join(sorted(missing))
+            + ". Using DEMO DATA instead."
+        )
+        return pd.DataFrame(DEMO_ROWS, columns=DEMO_COLUMNS), "DEMO FALLBACK"
+
+    for col in [
+        "lat", "lon", "methane_ppb", "methane_anomaly_ppb",
+        "thermal_anomaly_c", "deformation_mm_yr", "moisture_pct",
+        "pressure_psi", "wind_mps", "wind_deg", "area_ha",
+        "height_m", "mass_mt",
+    ]:
+        if col not in df.columns:
+            df[col] = np.nan
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if "state" not in df.columns:
+        df["state"] = ""
+
+    df["name"] = df["name"].astype(str)
+    df["state"] = df["state"].fillna("").astype(str)
+
+    df = df.dropna(subset=["lat", "lon"]).copy()
+
+    # India bounds.
+    df = df[
+        df["lat"].between(6, 38)
+        & df["lon"].between(68, 98)
+    ].copy()
+
+    if df.empty:
+        st.error("No valid Indian coordinates found. Using DEMO DATA.")
+        return pd.DataFrame(DEMO_ROWS, columns=DEMO_COLUMNS), "DEMO FALLBACK"
+
+    return df.reset_index(drop=True), "UPLOADED CSV"
+
+
+sites, data_source = load_site_data()
+
+
+# ============================================================
+# EARTH ENGINE: LATEST S5P OBSERVATION
+# ============================================================
+
+def ee_s5p_latest_info():
+    if not EE_OK or ee is None:
+        return None
+
+    try:
+        india = (
+            ee.FeatureCollection("FAO/GAUL/2015/level0")
+            .filter(ee.Filter.eq("ADM0_NAME", "India"))
+            .geometry()
+        )
+
+        collection = (
+            ee.ImageCollection(S5P_COLLECTION)
+            .filterBounds(india)
+            .sort("system:time_start", False)
+        )
+
+        image = ee.Image(collection.first())
+        millis = image.get("system:time_start").getInfo()
+        if millis is None:
+            return None
+
+        dt = datetime.fromtimestamp(
+            float(millis) / 1000.0,
+            tz=timezone.utc,
+        )
+
+        bands = image.bandNames().getInfo()
+        methane_band = None
+
+        candidates = [
+            "CH4_column_volume_mixing_ratio_dry_air_bias_corrected",
+            "CH4_column_volume_mixing_ratio_dry_air",
+        ]
+        for candidate in candidates:
+            if candidate in bands:
+                methane_band = candidate
+                break
+
+        return {
+            "datetime": dt,
+            "text": dt.strftime("%Y-%m-%d %H:%M UTC"),
+            "band": methane_band,
+            "bands": bands,
+        }
+    except Exception:
+        return None
+
+
+latest_s5p = ee_s5p_latest_info()
+
+
+# ============================================================
+# OPTIONAL S5P SITE SCORING
+# ============================================================
+
+def run_s5p_site_scoring(df, radius_km, days_recent, days_baseline):
+    """
+    Uses Earth Engine only when the user explicitly requests it.
+    The result is a concentration-screening layer, not an emission-rate inversion.
+    """
+    if not EE_OK or ee is None:
+        return None, "Earth Engine is not connected."
+
+    if len(df) > 3200:
+        return None, "Site count exceeds the configured safety limit of 3,200."
+
+    try:
+        india = (
+            ee.FeatureCollection("FAO/GAUL/2015/level0")
+            .filter(ee.Filter.eq("ADM0_NAME", "India"))
+            .geometry()
+        )
+
+        base = (
+            ee.ImageCollection(S5P_COLLECTION)
+            .filterBounds(india)
+            .sort("system:time_start", False)
+        )
+
+        first = ee.Image(base.first())
+        bands = first.bandNames().getInfo()
+
+        methane_band = (
+            "CH4_column_volume_mixing_ratio_dry_air_bias_corrected"
+            if "CH4_column_volume_mixing_ratio_dry_air_bias_corrected" in bands
+            else "CH4_column_volume_mixing_ratio_dry_air"
+        )
+
+        uncertainty_band = (
+            "CH4_column_volume_mixing_ratio_dry_air_uncertainty"
+            if "CH4_column_volume_mixing_ratio_dry_air_uncertainty" in bands
+            else None
+        )
+
+        latest_ms = first.get("system:time_start").getInfo()
+        latest_dt = datetime.fromtimestamp(
+            float(latest_ms) / 1000.0,
+            tz=timezone.utc,
+        )
+
+        recent_start = (latest_dt - timedelta(days=days_recent)).strftime("%Y-%m-%d")
+        recent_end = (latest_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        baseline_start = (
+            latest_dt - timedelta(days=days_recent + days_baseline)
+        ).strftime("%Y-%m-%d")
+        baseline_end = recent_start
+
+        recent = (
+            ee.ImageCollection(S5P_COLLECTION)
+            .filterDate(recent_start, recent_end)
+            .filterBounds(india)
+            .select(methane_band)
+        )
+
+        baseline = (
+            ee.ImageCollection(S5P_COLLECTION)
+            .filterDate(baseline_start, baseline_end)
+            .filterBounds(india)
+            .select(methane_band)
+        )
+
+        recent_img = recent.mean()
+        baseline_img = baseline.mean()
+        anomaly_img = recent_img.subtract(baseline_img).rename("ch4_anomaly")
+
+        features = []
+        for _, row in df.iterrows():
+            props = {"site_id": str(row["name"])}
+            features.append(
+                ee.Feature(
+                    ee.Geometry.Point([float(row["lon"]), float(row["lat"])]).buffer(
+                        float(radius_km) * 1000.0
+                    ),
+                    props,
+                )
+            )
+
+        fc = ee.FeatureCollection(features)
+
+        reducer = ee.Reducer.mean().combine(
+            reducer2=ee.Reducer.max(),
+            sharedInputs=True,
+        )
+
+        recent_fc = recent_img.reduceRegions(
+            collection=fc,
+            reducer=reducer,
+            scale=1113,
+            tileScale=8,
+        )
+
+        anomaly_fc = anomaly_img.reduceRegions(
+            collection=fc,
+            reducer=reducer,
+            scale=1113,
+            tileScale=8,
+        )
+
+        recent_info = recent_fc.getInfo()["features"]
+        anomaly_info = anomaly_fc.getInfo()["features"]
+
+        recent_map = {}
+        anomaly_map = {}
+
+        for feature in recent_info:
+            p = feature.get("properties", {})
+            recent_map[str(p.get("site_id"))] = {
+                "ee_ch4_mean": p.get("mean"),
+                "ee_ch4_max": p.get("max"),
+            }
+
+        for feature in anomaly_info:
+            p = feature.get("properties", {})
+            anomaly_map[str(p.get("site_id"))] = {
+                "ee_anomaly_mean": p.get("mean"),
+                "ee_anomaly_max": p.get("max"),
+            }
+
+        out = df.copy()
+        out["ee_ch4_mean"] = out["name"].map(
+            lambda x: recent_map.get(str(x), {}).get("ee_ch4_mean")
+        )
+        out["ee_ch4_max"] = out["name"].map(
+            lambda x: recent_map.get(str(x), {}).get("ee_ch4_max")
+        )
+        out["ee_anomaly_mean"] = out["name"].map(
+            lambda x: anomaly_map.get(str(x), {}).get("ee_anomaly_mean")
+        )
+        out["ee_anomaly_max"] = out["name"].map(
+            lambda x: anomaly_map.get(str(x), {}).get("ee_anomaly_max")
+        )
+
+        return out, None
+
+    except Exception as exc:
+        return None, str(exc)
+
+
+if "ee_scored" not in st.session_state:
+    st.session_state.ee_scored = None
+if "ee_error" not in st.session_state:
+    st.session_state.ee_error = None
+
+
+st.sidebar.markdown("---")
+if mode == "EARTH ENGINE + UPLOAD" and EE_OK:
+    if st.sidebar.button("🛰️ Run S5P site scoring", use_container_width=True):
+        with st.spinner("Running Sentinel-5P site screening in Earth Engine..."):
+            scored, err = run_s5p_site_scoring(
+                sites,
+                buffer_km,
+                analysis_days,
+                baseline_days,
+            )
+            st.session_state.ee_scored = scored
+            st.session_state.ee_error = err
+
+if st.session_state.ee_error:
+    st.sidebar.error(st.session_state.ee_error)
+
+if st.session_state.ee_scored is not None:
+    sites = st.session_state.ee_scored.copy()
+
+
+# ============================================================
+# CREATE SAFE DERIVED FEATURES
+# ============================================================
+
+# If Earth Engine values exist, prefer them where available.
+if "ee_ch4_mean" in sites.columns:
+    sites["methane_ppb"] = sites["ee_ch4_mean"].combine_first(sites["methane_ppb"])
+
+if "ee_anomaly_mean" in sites.columns:
+    sites["methane_anomaly_ppb"] = sites["ee_anomaly_mean"].combine_first(
+        sites["methane_anomaly_ppb"]
+    )
+
+
+# Demo/proxy values for missing columns.
+# These are explicitly labelled as proxies below.
+sites["methane_ppb"] = sites["methane_ppb"].fillna(1850)
+sites["methane_anomaly_ppb"] = sites["methane_anomaly_ppb"].fillna(
+    (sites["methane_ppb"] - 1850).clip(lower=0)
 )
+sites["thermal_anomaly_c"] = sites["thermal_anomaly_c"].fillna(2.0)
+sites["deformation_mm_yr"] = sites["deformation_mm_yr"].fillna(0.5)
+sites["moisture_pct"] = sites["moisture_pct"].fillna(15)
+sites["pressure_psi"] = sites["pressure_psi"].fillna(5)
+sites["wind_mps"] = sites["wind_mps"].fillna(3)
+sites["wind_deg"] = sites["wind_deg"].fillna(0)
 
-r = pdk.Deck(
-    layers=[layer_3d],
-    initial_view_state=view_state,
-    map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-    tooltip={"text": "CH4 Assimilated: {ch4_ppb} ppb\nDownwind Distance: {distance_m} m"}
-)
 
-st.pydeck_chart(r)
-
-# ---------------------------------------------------------
-# Altair Downwind Decay Curve (Clean Positive Axes)
-# ---------------------------------------------------------
-st.markdown("#### 📉 FNO Zero-Shot Downwind Dispersion Spectrum ($CH_4$ vs Distance)")
-
-decay_chart = alt.Chart(plume_df[['distance_m', 'ch4_ppb']]).mark_line(color='#a855f7', strokeWidth=2.5).encode(
-    x=alt.X('distance_m:Q', title='Downwind Distance (m)', scale=alt.Scale(zero=True)),
-    y=alt.Y('ch4_ppb:Q', title='CH4 Concentration (ppb)', scale=alt.Scale(zero=False)),
-    tooltip=['distance_m', 'ch4_ppb']
-).properties(height=300).interactive()
-
-st.altair_chart(decay_chart, use_container_width=True)
+# ============================================================
+# MULTI-PHYSICS CALCULATION
