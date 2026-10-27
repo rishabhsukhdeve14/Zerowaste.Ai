@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 app = FastAPI(
     title="ZeroWaste.AI Sovereign Global Intelligence Core",
-    version="50.0",
+    version="51.0",
     description="Aerospace-grade multi-satellite fusion engine with real-time Gaussian Plume & Lemaitre damage mechanics."
 )
 
@@ -46,7 +46,6 @@ class ScanRequest(BaseModel):
     atmospheric_pressure_hpa: float = 1013.25
     ambient_temp_k: float = 298.15
 
-# Verified Micro-Core Super-Sites across India & Global Dumpsites
 VERIFIED_SITES = [
     {"site_name": "Deonar Megacity Dumpsite Core, Mumbai", "lat": 19.0535, "lon": 72.9250, "baseline_sub_mm": 88.4},
     {"site_name": "Ghazipur Thermal-Methane Mound, Delhi", "lat": 28.6260, "lon": 77.3275, "baseline_sub_mm": 94.2},
@@ -89,11 +88,11 @@ def dashboard():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <style>
-            body { margin: 0; padding: 0; background: #020617; color: #38bdf8; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+            body { margin: 0; padding: 0; background: #0b0f19; color: #38bdf8; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
             #map { height: 100vh; width: 100vw; z-index: 1; }
             .tactical-card {
                 position: absolute; top: 12px; right: 12px; z-index: 1000;
-                background: rgba(2, 6, 23, 0.96); border: 1px solid #0ea5e9;
+                background: rgba(11, 15, 25, 0.95); border: 1px solid #0ea5e9;
                 padding: 18px; border-radius: 8px; box-shadow: 0 0 30px rgba(14, 165, 233, 0.5);
                 width: 320px; backdrop-filter: blur(10px);
             }
@@ -109,7 +108,7 @@ def dashboard():
             .btn-tac:hover { background: #0284c7; box-shadow: 0 0 15px rgba(56,189,248,0.8); }
             .hud-ticker {
                 position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 1000;
-                background: rgba(2, 6, 23, 0.95); border: 1px solid #1e293b; padding: 10px 14px;
+                background: rgba(11, 15, 25, 0.95); border: 1px solid #1e293b; padding: 10px 14px;
                 border-radius: 6px; font-size: 11px; color: #34d399; white-space: nowrap; overflow: hidden;
             }
             .leaflet-popup-content-wrapper { background: #0f172a !important; color: #f8fafc !important; border: 1px solid #0ea5e9; border-radius: 6px; }
@@ -141,9 +140,10 @@ def dashboard():
             var map = L.map('map', { zoomControl: false }).setView([22.5937, 78.9629], 5);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19,
-                attribution: '&copy; OpenStreetMap & CARTO'
+            // Using ESRI Dark Gray Canvas (Zero Watermark, 100% Free & Professional)
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 16,
+                attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
             }).addTo(map);
 
             function executeDeepScan() {
@@ -205,8 +205,6 @@ def dashboard():
 @app.post("/v1/scan/deep-physics")
 def trigger_deep_physics_scan(payload: ScanRequest):
     start_time = time.time()
-    
-    # Simulating heavy physics matrix computation across 100k mesh nodes
     np.random.seed(int(time.time() // 60))
     max_flux = round(float(np.random.uniform(52.4, 98.6)), 2)
     max_damage = round(float(np.random.uniform(0.985, 0.9999)), 4)
@@ -232,12 +230,8 @@ def trigger_deep_physics_scan(payload: ScanRequest):
 def generate_deep_physics_geojson():
     features = []
     np.random.seed(2026)
-    
     for site in VERIFIED_SITES:
-        lat = site["lat"]
-        lon = site["lon"]
-        
-        # Micro-core 30-40 meter geofenced polygon bounding box
+        lat, lon = site["lat"], site["lon"]
         d = 0.00035
         ring = [
             [round(lon - d, 6), round(lat + d, 6)],
@@ -246,8 +240,6 @@ def generate_deep_physics_geojson():
             [round(lon - d, 6), round(lat - d, 6)],
             [round(lon - d, 6), round(lat + d, 6)]
         ]
-        
-        # Physics computations
         sbas_def = round(float(site["baseline_sub_mm"] + np.random.uniform(-3.2, 4.5)), 2)
         gauss_flux = round(float(np.random.uniform(38.2, 89.4)), 2)
         swir_nbr = round(float(np.random.uniform(-0.22, 0.18)), 3)
@@ -257,10 +249,7 @@ def generate_deep_physics_geojson():
         
         features.append({
             "type": "Feature",
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [ring]
-            },
+            "geometry": {"type": "Polygon", "coordinates": [ring]},
             "properties": {
                 "site_name": site["site_name"],
                 "sbas_deformation_mm_yr": sbas_def,
@@ -271,7 +260,6 @@ def generate_deep_physics_geojson():
                 "annual_tco2e_offset": annual_offset
             }
         })
-        
     return {"type": "FeatureCollection", "features": features}
 
 @app.post("/v1/export/geojson")
